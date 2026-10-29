@@ -17,7 +17,7 @@ function beginNameCardJob(request){
     // 同時呼び出し上限10枠のうち、1枠を進捗取得用に残す。
     var count=Math.min(9,data.people.length),batches=[];
     for(var i=0;i<count;i++)batches.push({index:i,start:Math.floor(i*data.people.length/count),end:Math.floor((i+1)*data.people.length/count)});
-    var job={id:jobId,spreadsheetId:ss.getId(),sheetId:output.getSheetId(),name:name,total:data.people.length,rows:rows,print:print,batches:batches,hash:nameCardPeopleHash_(data.people),state:'active'};
+    var job={id:jobId,spreadsheetId:ss.getId(),sheetId:output.getSheetId(),name:name,total:data.people.length,rows:rows,print:print,batches:batches,hash:nameCardPeopleHash_(data.people),state:'active',resourceState:'pending',resourceChunks:{},resourceSlots:{},pendingImages:[]};
     var values={};values[nameCardJobKey_(jobId)]=JSON.stringify(job);
     batches.forEach(function(b){values[nameCardBatchKey_(jobId,b.index)]=JSON.stringify({state:'pending',done:0});});props.setProperties(values);
     SpreadsheetApp.flush();
@@ -37,7 +37,7 @@ function runNameCardBatch(request){
   try{
     var data=loadNameCardPeople();if(data.errors.length)throw new Error(data.errors.join('\n'));
     if(nameCardPeopleHash_(data.people)!==job.hash)throw new Error('生成中に回答が変更されました。');
-    var ss=SpreadsheetApp.getActiveSpreadsheet(),output=nameCardJobSheet_(job),resources=nameCardServerResources();
+    var ss=SpreadsheetApp.getActiveSpreadsheet(),output=nameCardJobSheet_(job),resources=nameCardServerResources(job,data.people.slice(batch.start,batch.end));
     for(var i=batch.start;i<batch.end;i++){
       var person=data.people[i],card=NameCardDraw.render(person,resources),png=nameCardServerPng(card.canvas);
       var bytes=Array.from(png,function(v){return v>127?v-256:v;}),blob=Utilities.newBlob(bytes,'image/png','名刺'+(i+1)+'.png');
@@ -84,7 +84,7 @@ function nameCardJobKey_(id){if(typeof id!=='string'||!/^[\w-]+$/.test(id))throw
 function nameCardBatchKey_(id,index){return nameCardJobKey_(id)+':'+index;}
 function nameCardReadJob_(id){var value=PropertiesService.getUserProperties().getProperty(nameCardJobKey_(id));if(!value)throw new Error('名刺作成の処理情報がありません。');var job=JSON.parse(value);if(job.spreadsheetId!==SpreadsheetApp.getActiveSpreadsheet().getId())throw new Error('対象のスプレッドシートが違います。');return job;}
 function nameCardJobSheet_(job){var sheet=SpreadsheetApp.getActiveSpreadsheet().getSheets().find(function(s){return s.getSheetId()===job.sheetId;});if(!sheet)throw new Error('作成中の名刺シートが見つかりません。');return sheet;}
-function nameCardClearJob_(id){var props=PropertiesService.getUserProperties(),prefix=nameCardJobKey_(id),all=props.getProperties();Object.keys(all).forEach(function(k){if(k===prefix||k.indexOf(prefix+':')===0)props.deleteProperty(k);});}
+function nameCardClearJob_(id){var props=PropertiesService.getUserProperties(),prefix=nameCardJobKey_(id),all=props.getProperties();if(all[prefix])nameCardDropResources_(JSON.parse(all[prefix]));Object.keys(all).forEach(function(k){if(k===prefix||k.indexOf(prefix+':')===0)props.deleteProperty(k);});}
 function nameCardPeopleHash_(people){return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(people),Utilities.Charset.UTF_8));}
 // 開いたままの旧ダイアログから、逐次版を呼ばせない。
 function publishNameCardSheet(){throw new Error('ダイアログを開き直してください。');}
@@ -97,16 +97,4 @@ function nameCardServerPng(canvas){
     smaller.getContext('2d').drawImage(canvas,0,0,smaller.width,smaller.height);canvas=smaller;png=NameCardNative.png(canvas);
   }
   return png;
-}
-function nameCardServerResources(){
-  var source=HtmlService.createHtmlOutputFromFile('NameCardAssets').getContent();
-  var assets=JSON.parse(source.slice(source.indexOf('var NameCardAssets=')+19,source.lastIndexOf(';')));
-  var fontResponse=UrlFetchApp.fetch('https://raw.githubusercontent.com/google/fonts/main/apache/kosugimaru/KosugiMaru-Regular.ttf');
-  var bytes=new Uint8Array(fontResponse.getBlob().getBytes());
-  NameCardNative.setFont(opentype.parse(bytes.buffer));
-  var images={};
-  var paths=Object.keys(assets.images);
-  var responses=UrlFetchApp.fetchAll(paths.map(function(path){return assets.images[path];}));
-  paths.forEach(function(path,i){images[path]=NameCardNative.decode(new Uint8Array(responses[i].getBlob().getBytes()));});
-  return {assets:assets,images:images};
 }
