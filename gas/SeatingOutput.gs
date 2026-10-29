@@ -27,7 +27,7 @@ function seatRenderAssignment_(output, job, pos, legend) {
         .setTextStyle(SpreadsheetApp.newTextStyle().setBold(false).build());
       if (seat.label.length) rich.setTextStyle(0, seat.label.length, SpreadsheetApp.newTextStyle().setFontSize(8).build());
       if (nameEnd > nameStart) rich.setTextStyle(nameStart, nameEnd, SpreadsheetApp.newTextStyle().setBold(true).build());
-      marks.forEach(function(mark) { rich.setTextStyle(mark.start, mark.end, SpreadsheetApp.newTextStyle().setFontSize(9).setForegroundColor(mark.color).build()); });
+      marks.forEach(function(mark) { rich.setTextStyle(mark.start, mark.end, SpreadsheetApp.newTextStyle().setFontSize(12).setForegroundColor(mark.color).build()); });
       cell.setRichTextValue(rich.build()).setNote(note.join('\n\n')).setWrap(true).setVerticalAlignment('top');
       rows.add(seat.row + 1); columns.add(seat.col);
     });
