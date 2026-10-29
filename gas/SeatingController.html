@@ -112,24 +112,30 @@
   const now=new Date(),pad=v=>String(v).padStart(2,'0');
   a.href=url;a.download='checkpoint-'+pad(now.getMonth()+1)+pad(now.getDate())+'-'+pad(now.getHours())+pad(now.getMinutes())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);log('JSONを書き出しました。');
  }
-    function legendImage(works) {
-      const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
-      const width=1000,padding=20,lineHeight=28,font='16px sans-serif';
-      ctx.font=font;
-      const lines=[];let line='';
-      for(const char of works.join('｜')) {
-        if(line&&ctx.measureText(line+char).width>width-padding*2){lines.push(line);line='';}
-        line+=char;
-      }
-      if(line)lines.push(line);
-      const height=padding*2+lineHeight*(lines.length+2);
-      canvas.width=width*2;canvas.height=height*2;ctx.scale(2,2);
-      ctx.fillStyle='#ffffff';ctx.fillRect(0,0,width,height);
-      ctx.fillStyle='#202124';ctx.font=font;ctx.textBaseline='top';
-      ctx.fillText('作品レベルの並び順（左から）',padding,padding);
-      lines.forEach((text,i)=>ctx.fillText(text,padding,padding+lineHeight*(i+2)));
-      return {data:canvas.toDataURL('image/png').split(',')[1],width,height};
-    }
+ function legendImage(works) {
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+  const padding=20,lineHeight=28,font='16px sans-serif';ctx.font=font;
+  const width=Math.ceil(Math.max(ctx.measureText('作品レベルの並び順（左から）').width,...works.map(work=>ctx.measureText('■■■■■ '+work).width)))+padding*2;
+  const lines=[[]];let used=0;
+  function append(text,color){
+   for(const char of text){
+    const advance=ctx.measureText(char).width;
+    if(used+advance>width-padding*2){lines.push([]);used=0;}
+    lines[lines.length-1].push({char,color,advance});used+=advance;
+   }
+  }
+  works.forEach((work,i)=>{
+   if(i){lines.push([]);used=0;}
+   const title=work.replace(/^『(.*)』$/,'$1'),colors=Object.prototype.hasOwnProperty.call(seatingLevelPalette,title)?seatingLevelPalette[title]:seatingLevelPalette._default;
+   colors.forEach(color=>append('■',color||'#ffffff'));append(' '+work,'#202124');
+  });
+  const height=padding*2+lineHeight*(lines.length+2);
+  canvas.width=width*2;canvas.height=height*2;ctx.scale(2,2);
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,width,height);ctx.font=font;ctx.textBaseline='top';
+  ctx.fillStyle='#202124';ctx.fillText('作品レベルの並び順（左から）',padding,padding);
+  lines.forEach((line,i)=>{let x=padding;for(const item of line){ctx.fillStyle=item.color;ctx.fillText(item.char,x,padding+lineHeight*(i+2));x+=item.advance;}});
+  return {data:canvas.toDataURL('image/png').split(',')[1],width,height};
+ }
  async function persistResult(){
   if(!session.search||session.running||busy)return;const snapshot=session.snapshot(),job=snapshot.job,legend=legendImage(job.works);
   busy=true;render();log('割り当てと探索状態をシートに保存中');
