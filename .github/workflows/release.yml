@@ -52,6 +52,41 @@ jobs:
         run: rustup toolchain install stable --profile minimal --target "$TARGET"
       - name: Build
         run: cargo +stable build --manifest-path cli/Cargo.toml --release --locked --target "$TARGET"
+      - name: Sign macOS executable
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_CERTIFICATE_BASE64:?APPLE_CERTIFICATE_BASE64 is required}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?APPLE_CERTIFICATE_PASSWORD is required}"
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+          umask 077
+          signing_dir=$(mktemp -d "$RUNNER_TEMP/signing.XXXXXX")
+          keychain="$signing_dir/signing.keychain-db"
+          cleanup() {
+            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            rm -rf "$signing_dir"
+          }
+          trap cleanup EXIT
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$signing_dir/certificate.p12"
+          keychain_password=$(openssl rand -hex 32)
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$signing_dir/certificate.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -t cert -f pkcs12 -k "$keychain" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk 'index($0, "Developer ID Application: ") && index($0, "(" ENVIRON["APPLE_TEAM_ID"] ")") { print $2 }')
+          if [[ ! "$identity" =~ ^[[:xdigit:]]{40}$ ]]; then
+            echo 'Expected one valid Developer ID Application identity for APPLE_TEAM_ID.' >&2
+            exit 1
+          fi
+          executable="cli/target/$TARGET/release/seat-solver"
+          codesign --force --sign "$identity" --keychain "$keychain" --options runtime --timestamp --identifier com.github.HotariTobu.event-sheet-tools.seat-solver "$executable"
+          codesign --verify --strict --verbose=2 "$executable"
       - name: Package executable (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -69,6 +104,28 @@ jobs:
           mkdir -p "$RUNNER_TEMP/release"
           cd "cli/target/$TARGET/release"
           zip -j "$RUNNER_TEMP/release/seat-solver-$PLATFORM.zip" seat-solver
+      - name: Notarize macOS archive
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_ID:?APPLE_ID is required}"
+          : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required}"
+          : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+          result="$RUNNER_TEMP/notarization.json"
+          xcrun notarytool submit "$RUNNER_TEMP/release/seat-solver-$PLATFORM.zip" \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait --output-format json > "$result"
+          cat "$result"
+          if ! jq -e '.status == "Accepted"' "$result" >/dev/null; then
+            xcrun notarytool log "$(jq -r '.id' "$result")" \
+              --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: seat-solver-${{ matrix.platform }}
