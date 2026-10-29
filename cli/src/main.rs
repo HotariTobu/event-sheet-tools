@@ -16,10 +16,10 @@ use std::{
 #[command(
     name = "seat-solver",
     version,
-    about = "座席探索JSONを読み込み、計算完了またはCtrl+Cで再開用JSONを保存します。"
+    about = "座席割当を計算します。"
 )]
 struct Args {
-    #[arg(help = "ダイアログからエクスポートしたJSON、または以前のCLI出力JSON")]
+    #[arg(help = "チェックポイントファイル")]
     input: PathBuf,
 }
 fn write_snapshot(input: &Path, snapshot: &Snapshot) -> Result<PathBuf> {
