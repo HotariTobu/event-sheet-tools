@@ -106,7 +106,7 @@ impl Progress {
             }
         }
         eprintln!(
-            "調べた探索箇所: {}｜調査を省略した探索範囲: {}",
+            "調べた：{}｜除外した：{}",
             format_count(search.state.nodes),
             format_count(search.state.pruned)
         );

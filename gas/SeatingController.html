@@ -88,7 +88,7 @@
    }
   }
   if(force||phaseChanged||second!==counterSecond){
-   log('調べた探索箇所: '+s.nodes.toLocaleString('ja-JP')+'｜調査を省略した探索範囲: '+s.pruned.toLocaleString('ja-JP'));
+   log('調べた：'+s.nodes.toLocaleString('ja-JP')+'｜除外した：'+s.pruned.toLocaleString('ja-JP'));
    counterSecond=second;
   }
  }
