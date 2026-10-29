@@ -19,7 +19,9 @@ var NameCardDraw=(()=>{const ptToMm=25.4/72;
     themes.forEach((g,i)=>{
       const slot=83/themes.length,logo=images[g.watermark];
       if(!logo)throw Error(prefix+g.label+'のロゴを読み込めません。');
+      ctx.globalAlpha=assets.tokens.watermark.opacity;
       contain(ctx,logo,6+i*slot+1.5,6,slot-3,30);
+      ctx.globalAlpha=1;
       ctx.strokeStyle=g.color;ctx.lineWidth=ptToMm;ctx.beginPath();ctx.moveTo(6+i*slot,33.5);ctx.lineTo(6+(i+1)*slot,33.5);ctx.stroke();
     });
     ctx.font=(43*ptToMm)+'px CardRounded';const measured=ctx.measureText(person.nickname).width;

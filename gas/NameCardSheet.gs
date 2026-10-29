@@ -105,9 +105,8 @@ function nameCardServerResources(){
   var bytes=new Uint8Array(fontResponse.getBlob().getBytes());
   NameCardNative.setFont(opentype.parse(bytes.buffer));
   var images={};
-  var paths=Object.keys(assets.images),externalPaths=paths.filter(function(path){return assets.images[path].indexOf('https://')===0;});
-  var responses=externalPaths.length?UrlFetchApp.fetchAll(externalPaths.map(function(path){return assets.images[path];})):[];
-  externalPaths.forEach(function(path,i){images[path]=NameCardNative.decode(new Uint8Array(responses[i].getBlob().getBytes()));});
-  paths.filter(function(path){return externalPaths.indexOf(path)<0;}).forEach(function(path){images[path]=NameCardNative.decode(new Uint8Array(Utilities.base64Decode(assets.images[path].split(',')[1])));});
+  var paths=Object.keys(assets.images);
+  var responses=UrlFetchApp.fetchAll(paths.map(function(path){return assets.images[path];}));
+  paths.forEach(function(path,i){images[path]=NameCardNative.decode(new Uint8Array(responses[i].getBlob().getBytes()));});
   return {assets:assets,images:images};
 }
