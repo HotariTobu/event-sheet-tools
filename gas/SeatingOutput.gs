@@ -31,7 +31,7 @@ function seatRenderAssignment_(output, job, pos, legend) {
       cell.setRichTextValue(rich.build()).setNote(note.join('\n\n')).setWrap(true).setVerticalAlignment('top');
       rows.add(seat.row + 1); columns.add(seat.col);
     });
-    columns.forEach(function(c) { output.setColumnWidth(c, 80); });
+    columns.forEach(function(c) { output.setColumnWidth(c, 82); });
     rows.forEach(function(r) { output.setRowHeight(r, 52); });
     var legendRow = output.getLastRow() + 2;
     if (legendRow > output.getMaxRows()) output.insertRowsAfter(output.getMaxRows(), legendRow - output.getMaxRows());
