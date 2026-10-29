@@ -1,9 +1,8 @@
 name: Release seat-solver
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -47,6 +46,8 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal --target "$TARGET"
       - name: Build
@@ -77,7 +78,7 @@ jobs:
           retention-days: 1
 
   release:
-    name: Publish release
+    name: Attach release archives
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -88,12 +89,10 @@ jobs:
           pattern: seat-solver-*
           path: ${{ runner.temp }}/release
           merge-multiple: true
-      - name: Publish all six archives
+      - name: Attach all six archives
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
+          tag_name: ${{ github.event.release.tag_name }}
           fail_on_unmatched_files: true
           files: |
             ${{ runner.temp }}/release/seat-solver-windows-x64.zip
