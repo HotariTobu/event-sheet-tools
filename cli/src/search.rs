@@ -157,6 +157,11 @@ impl Search {
             .and_then(|s| s.first())
             .map(Val::approx)
     }
+    pub fn total_utility(&self) -> Option<f64> {
+        self.best_score
+            .as_ref()
+            .map(|score| score.iter().map(Val::approx).sum())
+    }
     pub fn step(&mut self) -> Result<()> {
         if self.done() {
             return Ok(());

@@ -42,22 +42,75 @@ fn write_snapshot(input: &Path, snapshot: &Snapshot) -> Result<PathBuf> {
     }
     Ok(path)
 }
-fn report(search: &Search) {
-    let phase = match search.state.phase {
-        Phase::Feasible => "初期配置探索",
-        Phase::Local => "局所改善",
-        Phase::Exact => "厳密探索",
-        Phase::Complete => "厳密探索完了",
-        Phase::Infeasible => "配置不可能",
-    };
-    let score = search
-        .minimum_utility()
-        .map(|v| format!("｜最低効用: {v:.7}"))
-        .unwrap_or_default();
-    eprintln!(
-        "{phase}｜探索節点: {}　除外した枝: {}{score}",
-        search.state.nodes, search.state.pruned
-    );
+#[derive(Default)]
+struct Progress {
+    phase: Option<Phase>,
+    best: Option<Vec<isize>>,
+    total: Option<String>,
+    minimum: Option<String>,
+}
+fn format_count(value: u64) -> String {
+    let digits = value.to_string();
+    let mut text = String::new();
+    for (i, digit) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            text.push(',');
+        }
+        text.push(digit);
+    }
+    text
+}
+impl Progress {
+    fn report(&mut self, search: &Search) {
+        if self.phase != Some(search.state.phase) {
+            let phase = match search.state.phase {
+                Phase::Feasible => "初期配置探索",
+                Phase::Local => "局所改善",
+                Phase::Exact => "厳密探索",
+                Phase::Complete => "厳密探索完了",
+                Phase::Infeasible => "配置不可能",
+            };
+            eprintln!("{phase}");
+            self.phase = Some(search.state.phase);
+        }
+        if self.best != search.state.best {
+            if let Some(value) = search.total_utility() {
+                let total = format!("{value:.3}");
+                if self.best.is_none() {
+                    eprintln!("総効用: {total}");
+                } else if self.total.as_ref() != Some(&total) {
+                    let previous: f64 = self.total.as_ref().unwrap().parse().unwrap();
+                    let current: f64 = total.parse().unwrap();
+                    eprintln!(
+                        "最良割当を更新｜総効用: {total}（{:+.3}）",
+                        current - previous
+                    );
+                } else {
+                    eprintln!("最良割当を更新");
+                }
+                self.total = Some(total);
+            }
+            self.best = search.state.best.clone();
+        }
+        if let Some(value) = search.minimum_utility() {
+            let minimum = format!("{value:.7}");
+            if self.minimum.as_ref() != Some(&minimum) {
+                if let Some(previous) = &self.minimum {
+                    let previous: f64 = previous.parse().unwrap();
+                    let current: f64 = minimum.parse().unwrap();
+                    eprintln!("最低効用: {minimum}（{:+.7}）", current - previous);
+                } else {
+                    eprintln!("最低効用: {minimum}");
+                }
+                self.minimum = Some(minimum);
+            }
+        }
+        eprintln!(
+            "調べた探索箇所: {}｜調査を省略した探索範囲: {}",
+            format_count(search.state.nodes),
+            format_count(search.state.pruned)
+        );
+    }
 }
 fn run() -> Result<()> {
     let args = Args::parse();
@@ -74,17 +127,20 @@ fn run() -> Result<()> {
         "{}人 / {}席 / {}作品",
         search.model.n, search.model.k, search.model.m
     );
-    report(&search);
+    let mut progress = Progress::default();
+    progress.report(&search);
     let threads = std::thread::available_parallelism().map_or(1, usize::from);
-    if let Err(error) = seat_solver::parallel::run(&mut search, threads, &stopped, report) {
+    if let Err(error) = seat_solver::parallel::run(&mut search, threads, &stopped, |search| {
+        progress.report(search)
+    }) {
         let output = write_snapshot(&args.input, &search.snapshot())?;
         eprintln!("保存しました：{}", output.display());
         return Err(error.context("探索を停止し、その時点の状態を保存しました。"));
     }
     let output = write_snapshot(&args.input, &search.snapshot())?;
-    report(&search);
+    progress.report(&search);
     if !search.done() {
-        eprintln!("中断しました。次回は保存先JSONを入力にして再開できます。");
+        eprintln!("中断しました。");
     }
     eprintln!("保存しました：{}", output.display());
     Ok(())

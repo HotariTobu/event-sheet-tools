@@ -2,8 +2,9 @@
 (function(){
  'use strict';
  const session=new SeatingSession(),el=id=>document.getElementById(id),done=()=>session.done();
- const names={feasible:'同伴者制約を満たす初期配置を探索中',local:'席交換・空席移動で改善中',exact:'分枝限定法で厳密探索中',complete:'厳密探索完了：leximin最適解',infeasible:'指定の制約では配置できません'};
+ const names={feasible:'初期配置探索',local:'局所改善',exact:'厳密探索',complete:'厳密探索完了',infeasible:'配置不可能'};
  let busy=false,timer=null,idleTimer=false,lastLogKey='',view='entry',checkpointLoading=true;
+ let reportedPhase=null,reportedBest=null,reportedTotal=null,reportedMinimum=null,counterSecond=null;
  function log(message,key,isError=false,link=null){
   if(key&&key===lastLogKey)return;
   const entry=document.createElement('div');entry.className='entry'+(isError?' is-error':'');entry.textContent=message;if(link)entry.appendChild(link);
@@ -37,15 +38,15 @@
   try{
    if(action==='new'){
     const h=el('horizontal').value.trim(),v=el('vertical').value.trim();Seating.decimal(h);Seating.decimal(v);
-    busy=true;render();log('回答・座席配置を読み込み中');const job=await call('loadSeatingJob',h,v);session.prepare(job);
+    busy=true;render();log('入力を検証・前処理中…');const job=await call('loadSeatingJob',h,v);session.prepare(job);
     adopted();log('計算準備完了');
    }else if(action==='open'){
     const id=Number(el('checkpoint').value);if(el('checkpoint').value===''||!Number.isSafeInteger(id)||id<0)throw Error('シートを選択してください。');
-    const name=el('checkpoint').selectedOptions[0].textContent;busy=true;render();
+    const name=el('checkpoint').selectedOptions[0].textContent;busy=true;render();log('入力を検証・前処理中…');
     const saved=await call('loadSeatingCheckpoint',id);session.load(saved,{sheetId:id,name});
     adopted();log('「'+name+'」を読み込みました。');summary();
    }else if(action==='import'){
-    const file=el('json-file').files[0];if(!file)throw Error('JSONファイルを選択してください。');busy=true;render();
+    const file=el('json-file').files[0];if(!file)throw Error('JSONファイルを選択してください。');busy=true;render();log('入力を検証・前処理中…');
     const snapshot=JSON.parse((await file.text()).replace(/^\uFEFF/,''));
     const saved=await call('validateSeatingFile',snapshot);session.load(saved,null);
     adopted();log('「'+file.name+'」を読み込みました。');summary();
@@ -60,11 +61,36 @@
   if(busy||!session.search||session.running)return;
   inputError('');try{await persistResult();google.script.host.close();}catch(e){fail(e);}
  });
- function adopted(){busy=false;setView('compute');log(session.search.model.n+'人 / '+session.search.model.k+'席 / '+session.search.model.m+'作品');render();}
- function summary(){
-  if(!session.search)return;const s=session.search.summary();
-  const message=names[s.phase]+(!session.running&&!done()?'（一時停止）':'')+'｜探索節点: '+s.nodes.toLocaleString()+'　除外した枝: '+s.pruned.toLocaleString()+(s.score?'｜最低効用: '+s.score[0].toPrecision(7):'');
-  log(message,[s.phase,session.running,s.best?s.best.join(','):'',session.running?Math.floor(Date.now()/1000):''].join('|'));
+ function adopted(){
+  reportedPhase=null;reportedBest=null;reportedTotal=null;reportedMinimum=null;counterSecond=null;
+  busy=false;setView('compute');log(session.search.model.n+'人 / '+session.search.model.k+'席 / '+session.search.model.m+'作品');summary();render();
+ }
+ function summary(force=false){
+  if(!session.search)return;const s=session.search.summary(),second=Math.floor(Date.now()/1000),phaseChanged=s.phase!==reportedPhase;
+  if(phaseChanged){log(names[s.phase]);reportedPhase=s.phase;}
+  const best=s.best?JSON.stringify(s.best):null;
+  if(best!==reportedBest){
+   if(s.utilities){
+    const total=s.utilities.reduce((sum,value)=>sum+value,0).toFixed(3);
+    if(reportedBest===null)log('総効用: '+total);
+    else if(total!==reportedTotal){const delta=Number(total)-Number(reportedTotal);log('最良割当を更新｜総効用: '+total+'（'+(delta>=0?'+':'')+delta.toFixed(3)+'）');}
+    else log('最良割当を更新');
+    reportedTotal=total;
+   }
+   reportedBest=best;
+  }
+  if(s.score){
+   const minimum=s.score[0].toFixed(7);
+   if(minimum!==reportedMinimum){
+    if(reportedMinimum===null)log('最低効用: '+minimum);
+    else {const delta=Number(minimum)-Number(reportedMinimum);log('最低効用: '+minimum+'（'+(delta>=0?'+':'')+delta.toFixed(7)+'）');}
+    reportedMinimum=minimum;
+   }
+  }
+  if(force||phaseChanged||second!==counterSecond){
+   log('調べた探索箇所: '+s.nodes.toLocaleString('ja-JP')+'｜調査を省略した探索範囲: '+s.pruned.toLocaleString('ja-JP'));
+   counterSecond=second;
+  }
  }
  function scheduleTick(){idleTimer=typeof requestIdleCallback==='function';timer=idleTimer?requestIdleCallback(tick):setTimeout(tick,0);}
  function cancelTick(){if(timer!==null){if(idleTimer)cancelIdleCallback(timer);else clearTimeout(timer);timer=null;}}
@@ -75,7 +101,7 @@
   }catch(e){fail(e);}
  }
  el('start').addEventListener('click',()=>{if(!session.search||busy||session.running||done())return;session.start();render();summary();scheduleTick();});
- el('pause').addEventListener('click',()=>{if(!session.search||busy)return;session.pause();cancelTick();render();summary();setView('output');});
+ el('pause').addEventListener('click',()=>{if(!session.search||busy)return;const wasRunning=session.running;session.pause();cancelTick();render();summary(true);if(wasRunning&&!done())log('中断しました。');setView('output');});
  const solverReleaseUrl='https://github.com/HotariTobu/event-sheet-tools/releases/latest/download/';
  document.querySelectorAll('[data-solver]').forEach(button=>button.addEventListener('click',()=>{
   if(busy||view!=='output')return;
