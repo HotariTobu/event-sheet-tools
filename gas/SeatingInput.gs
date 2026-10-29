@@ -80,7 +80,8 @@ function seatLayout(ss) {
       (row.values || []).forEach(function(cell, cc) {
         var r = (block.startRow || 0) + rr + 1, c = (block.startColumn || 0) + cc + 1;
         var b = (cell.effectiveFormat || {}).borders || {};
-        function edge(side) { return b[side] && b[side].style && !/^(NONE|STYLE_UNSPECIFIED)$/.test(b[side].style); }
+        // 太さにかかわらず実線だけを壁とし、点線・破線・二重線は含めない。
+        function edge(side) { return b[side] && /^(SOLID|SOLID_MEDIUM|SOLID_THICK)$/.test(b[side].style); }
         if (edge('top')) add(2*c-1, 2*r-1, 2*c+1, 2*r-1);
         if (edge('bottom')) add(2*c-1, 2*r+1, 2*c+1, 2*r+1);
         if (edge('left')) add(2*c-1, 2*r-1, 2*c-1, 2*r+1);
