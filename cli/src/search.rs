@@ -8,8 +8,9 @@ use serde_json::{Map, Value};
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashSet},
+    sync::Arc,
 };
-const JS_MAX: u64 = 9_007_199_254_740_991;
+pub(crate) const JS_MAX: u64 = 9_007_199_254_740_991;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Phase {
@@ -105,13 +106,14 @@ pub struct Snapshot {
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
+#[derive(Clone)]
 pub struct Search {
-    pub model: Model,
+    pub model: Arc<Model>,
     pub state: State,
     raw_job: Value,
     extra: Map<String, Value>,
-    best_score: Option<Vec<Val>>,
-    local_score: Option<Vec<Val>>,
+    pub(crate) best_score: Option<Vec<Val>>,
+    pub(crate) local_score: Option<Vec<Val>>,
 }
 impl Search {
     pub fn from_snapshot(snapshot: Snapshot) -> Result<Self> {
@@ -120,7 +122,7 @@ impl Search {
             "JSONのバージョンに対応していません。"
         );
         let job: Job = serde_json::from_value(snapshot.job.clone())?;
-        let model = Model::new(job)?;
+        let model = Arc::new(Model::new(job)?);
         let mut state = snapshot.state;
         validate(&model, &mut state)?;
         let best_score = state.best.as_ref().map(|p| model.score(p));

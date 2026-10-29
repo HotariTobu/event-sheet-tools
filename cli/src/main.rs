@@ -10,14 +10,9 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
 };
 #[derive(Parser)]
-#[command(
-    name = "seat-solver",
-    version,
-    about = "座席割当を計算します。"
-)]
+#[command(name = "seat-solver", version, about = "座席割当を計算します。")]
 struct Args {
     #[arg(help = "チェックポイントファイル")]
     input: PathBuf,
@@ -80,19 +75,11 @@ fn run() -> Result<()> {
         search.model.n, search.model.k, search.model.m
     );
     report(&search);
-    let mut reported = Instant::now();
-    let mut phase = search.state.phase;
-    while !search.done() && !stopped.load(Ordering::Relaxed) {
-        if let Err(e) = search.step() {
-            let output = write_snapshot(&args.input, &search.snapshot())?;
-            eprintln!("保存しました：{}", output.display());
-            return Err(e.context("探索を停止し、その時点の状態を保存しました。"));
-        }
-        if search.state.phase != phase || reported.elapsed() >= Duration::from_secs(1) {
-            report(&search);
-            phase = search.state.phase;
-            reported = Instant::now();
-        }
+    let threads = std::thread::available_parallelism().map_or(1, usize::from);
+    if let Err(error) = seat_solver::parallel::run(&mut search, threads, &stopped, report) {
+        let output = write_snapshot(&args.input, &search.snapshot())?;
+        eprintln!("保存しました：{}", output.display());
+        return Err(error.context("探索を停止し、その時点の状態を保存しました。"));
     }
     let output = write_snapshot(&args.input, &search.snapshot())?;
     report(&search);

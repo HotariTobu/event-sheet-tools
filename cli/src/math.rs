@@ -5,11 +5,9 @@ use num_integer::Integer;
 use num_rational::BigRational as Q;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::{
-    cell::{OnceCell, RefCell},
     cmp::Ordering,
     collections::BTreeMap,
-    rc::Rc,
-    sync::LazyLock,
+    sync::{Arc, LazyLock, Mutex, OnceLock},
 };
 static SCALE: LazyLock<BigInt> = LazyLock::new(|| BigInt::one() << 64usize);
 type Poly = BTreeMap<BigInt, Q>;
@@ -124,12 +122,12 @@ fn poly_add(a: &Poly, b: &Poly, negative: bool) -> Poly {
     p
 }
 #[derive(Clone)]
-pub struct Val(Rc<Node>);
+pub struct Val(Arc<Node>);
 struct Node {
     lo: BigInt,
     hi: BigInt,
     approx: f64,
-    poly: OnceCell<Poly>,
+    poly: OnceLock<Poly>,
     expr: Expr,
 }
 enum Expr {
@@ -142,12 +140,12 @@ enum Expr {
 }
 impl Val {
     fn new(lo: BigInt, hi: BigInt, approx: f64, expr: Expr) -> Self {
-        Self(Rc::new(Node {
+        Self(Arc::new(Node {
             lo,
             hi,
             approx,
             expr,
-            poly: OnceCell::new(),
+            poly: OnceLock::new(),
         }))
     }
     pub fn rat(n: BigInt, d: BigInt) -> Self {
@@ -253,18 +251,21 @@ impl Val {
         })
     }
 }
-pub fn compare(ar: &RefCell<Arithmetic>, a: &Val, b: &Val) -> Ordering {
+pub fn compare(ar: &Mutex<Arithmetic>, a: &Val, b: &Val) -> Ordering {
+    if Arc::ptr_eq(&a.0, &b.0) {
+        return Ordering::Equal;
+    }
     if a.0.lo > b.0.hi {
         return Ordering::Greater;
     }
     if a.0.hi < b.0.lo {
         return Ordering::Less;
     }
-    let mut ar = ar.borrow_mut();
+    let mut ar = ar.lock().expect("exact arithmetic lock poisoned");
     let p = poly_add(a.exact(&mut ar), b.exact(&mut ar), true);
     ar.sign(&p)
 }
-pub fn delta(ar: &RefCell<Arithmetic>, m: usize) -> Val {
+pub fn delta(ar: &Mutex<Arithmetic>, m: usize) -> Val {
     let mut reachable = std::collections::BTreeSet::from([0usize]);
     for _ in 0..m {
         reachable = reachable

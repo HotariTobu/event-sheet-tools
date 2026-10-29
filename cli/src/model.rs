@@ -3,9 +3,9 @@ use anyhow::{Result, ensure};
 use num_bigint::BigInt;
 use serde::Deserialize;
 use std::{
-    cell::RefCell,
     cmp::Ordering,
     collections::{HashMap, HashSet},
+    sync::Mutex,
 };
 #[derive(Clone, Deserialize)]
 pub struct Person {
@@ -44,7 +44,7 @@ pub struct Model {
     pub m: usize,
     pub groups: Vec<Vec<usize>>,
     pub tables: Vec<Vec<usize>>,
-    pub ar: RefCell<Arithmetic>,
+    pub ar: Mutex<Arithmetic>,
     pub s: Vec<Vec<Val>>,
     pub w: Vec<Vec<Val>>,
     sorted_people: Vec<Vec<usize>>,
@@ -113,7 +113,7 @@ impl Model {
             groups.iter().all(|g| g.len() <= max),
             "同伴者グループが最大の卓の定員を超えています。"
         );
-        let ar = RefCell::new(Arithmetic::default());
+        let ar = Mutex::new(Arithmetic::default());
         let delta = math::delta(&ar, m);
         let mut common = vec![vec![0usize; n]; n];
         let mut cmax = 0;
