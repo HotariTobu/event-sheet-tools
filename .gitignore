@@ -1,0 +1,8 @@
+.clasp.json
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~

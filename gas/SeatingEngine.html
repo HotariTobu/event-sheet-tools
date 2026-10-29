@@ -1,0 +1,376 @@
+<script>
+/* 純粋な計算部分。Sheets/GAS/DOMには依存しない。 */
+var Seating = (function() {
+  'use strict';
+  const PRECISION = 64n, SCALE = 1n << PRECISION;
+  const abs = a => a < 0n ? -a : a;
+  function gcd(a, b) { a=abs(a); b=abs(b); while(b) { const t=a%b; a=b; b=t; } return a; }
+  function fraction(n, d=1n) {
+    if (!d) throw Error('分母が0です。');
+    if(d<0n) { n=-n; d=-d; }
+    const g=gcd(n,d); return [n/g,d/g];
+  }
+  const fadd=(a,b)=>fraction(a[0]*b[1]+b[0]*a[1],a[1]*b[1]);
+  const fmul=(a,b)=>fraction(a[0]*b[0],a[1]*b[1]);
+  function floor(n,d) { return n>=0n ? n/d : -((-n+d-1n)/d); }
+  const ceil=(n,d)=>-floor(-n,d);
+  function isqrt(n) {
+    if(n<0n) throw Error('負の平方根です。');
+    if(n<2n) return n;
+    let x=1n<<BigInt(Math.ceil(n.toString(2).length/2));
+    for(;;) { const y=(x+n/x)>>1n; if(y>=x) return x; x=y; }
+  }
+  function numberRatio(n,d) {
+    if(!n) return 0;
+    const negative=n<0n; n=abs(n);
+    const a=n.toString(),b=d.toString(),k=16;
+    return (negative?-1:1)*Number(a.slice(0,k))/Number(b.slice(0,k))*10**(Math.max(0,a.length-k)-Math.max(0,b.length-k));
+  }
+  function decimal(text) {
+    text=String(text).trim();
+    if(!Number.isFinite(Number(text)) || Number(text)<=0) throw Error('横・縦の距離は正の有限値を入力してください。');
+    const m=text.match(/^\+?(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
+    if(!m || !(m[1]+(m[2]||''))) throw Error('距離の入力が数値ではありません。');
+    const power=(m[2]||'').length-Number(m[3]||0);
+    return power>=0 ? fraction(BigInt(m[1]+(m[2]||'')),10n**BigInt(power)) :
+      fraction(BigInt(m[1]+(m[2]||''))*10n**BigInt(-power));
+  }
+
+  // 平方因子の総当たり分解はせず、平方根の有理数倍の同値類を正規化する。
+  // 異なる同値類の平方根はQ上で線形独立なので、係数消去で厳密な同値判定ができる。
+  function Arithmetic() {
+    this.radicals=[]; this.canonical=new Map(); this.rootBounds=new Map();
+  }
+  Arithmetic.prototype.radical=function(r) {
+    const key=String(r); if(this.canonical.has(key)) return this.canonical.get(key);
+    const sq=isqrt(r); let result;
+    if(sq*sq===r) result=['1',[sq,1n]];
+    else {
+      for(const known of this.radicals) {
+        const g=gcd(r,known),a=isqrt(r/g),b=isqrt(known/g);
+        if(a*a===r/g && b*b===known/g) { result=[String(known),fraction(a,b)]; break; }
+      }
+      if(!result) { this.radicals.push(r); result=[key,[1n,1n]]; }
+    }
+    this.canonical.set(key,result); return result;
+  };
+  function term(poly,key,q) {
+    if(!q[0]) return;
+    const sum=poly.has(key)?fadd(poly.get(key),q):q;
+    if(sum[0]) poly.set(key,sum); else poly.delete(key);
+  }
+  const rationalPoly=q=>q[0]?new Map([['1',q]]):new Map();
+  function polyAdd(a,b,sign=1n) {
+    const p=new Map(a); for(const [r,q] of b) term(p,r,[sign*q[0],q[1]]); return p;
+  }
+  Arithmetic.prototype.rootPoly=function(r,q=[1n,1n]) {
+    const [key,f]=this.radical(r); return rationalPoly([0n,1n]).set(key,fmul(q,f));
+  };
+  Arithmetic.prototype.multiply=function(a,b) {
+    const p=new Map();
+    for(const [r,x] of a) for(const [s,y] of b) {
+      const g=gcd(BigInt(r),BigInt(s));
+      const [key,f]=this.radical((BigInt(r)/g)*(BigInt(s)/g));
+      term(p,key,fmul(fmul(x,y),fmul([g,1n],f)));
+    }
+    return p;
+  };
+  Arithmetic.prototype.bounds=function(p,bits) {
+    let lo=0n,hi=0n; const scale=1n<<bits;
+    for(const [r,q] of p) {
+      const cache=r+':'+bits; let bound=this.rootBounds.get(cache);
+      if(!bound) {
+        const scaled=BigInt(r)*scale*scale,root=isqrt(scaled);
+        bound=[root,root*root===scaled?root:root+1n]; this.rootBounds.set(cache,bound);
+      }
+      const a=q[0]>=0n?bound[0]:bound[1],b=q[0]>=0n?bound[1]:bound[0];
+      lo+=floor(q[0]*a,q[1]); hi+=ceil(q[0]*b,q[1]);
+    }
+    return [lo,hi];
+  };
+  Arithmetic.prototype.sign=function(p) {
+    for(const [key,q] of p) if(!q[0]) p.delete(key);
+    if(!p.size) return 0;
+    for(let bits=PRECISION;;bits*=2n) {
+      const [lo,hi]=this.bounds(p,bits);
+      if(lo>0n) return 1; if(hi<0n) return -1;
+    }
+  };
+  function value(lo,hi,v,build) {
+    let cached;
+    return {lo,hi,v,exact:()=>{ if(!cached) cached=build(); return cached; }};
+  }
+  function rat(n,d=1n) {
+    const q=fraction(n,d);
+    return value(floor(q[0]*SCALE,q[1]),ceil(q[0]*SCALE,q[1]),numberRatio(q[0],q[1]),()=>rationalPoly(q));
+  }
+  function root(ar,r) {
+    const scaled=r*SCALE*SCALE,lo=isqrt(scaled),hi=lo*lo===scaled?lo:lo+1n;
+    return value(lo,hi,Math.sqrt(Number(r)),()=>ar.rootPoly(r));
+  }
+  function plus(a,b) { return value(a.lo+b.lo,a.hi+b.hi,a.v+b.v,()=>polyAdd(a.exact(),b.exact())); }
+  function minus(a,b) { return value(a.lo-b.hi,a.hi-b.lo,a.v-b.v,()=>polyAdd(a.exact(),b.exact(),-1n)); }
+  function times(ar,a,b) {
+    const p=[a.lo*b.lo,a.lo*b.hi,a.hi*b.lo,a.hi*b.hi];
+    const low=p.reduce((x,y)=>x<y?x:y),high=p.reduce((x,y)=>x>y?x:y);
+    return value(floor(low,SCALE),ceil(high,SCALE),a.v*b.v,()=>ar.multiply(a.exact(),b.exact()));
+  }
+  function compare(ar,a,b) {
+    if(a.lo>b.hi) return 1; if(a.hi<b.lo) return -1;
+    return ar.sign(polyAdd(a.exact(),b.exact(),-1n));
+  }
+  function base(ar,N) {
+    const r=BigInt(N),s=root(ar,r),denLo=16n*SCALE+s.lo,denHi=16n*SCALE+s.hi;
+    return value(floor(16n*SCALE*SCALE,denHi),ceil(16n*SCALE*SCALE,denLo),16/(16+Math.sqrt(N)),()=>{
+      if(N===256) return rationalPoly([1n,2n]);
+      return polyAdd(rationalPoly(fraction(256n,256n-r)),ar.rootPoly(r,fraction(-16n,256n-r)));
+    });
+  }
+  function delta(ar,m) {
+    let reachable=new Set([0]);
+    const terms=[0,1,9,16,25,49,64,81,144,225,256];
+    for(let k=0;k<m;k++) { const next=new Set(); for(const n of reachable) for(const t of terms) next.add(n+t); reachable=next; }
+    const ns=Array.from(reachable).sort((a,b)=>a-b); let best=null;
+    for(let k=1;k<ns.length;k++) {
+      const gap=minus(base(ar,ns[k-1]),base(ar,ns[k]));
+      if(!best || compare(ar,gap,best)<0) best=gap;
+    }
+    return best;
+  }
+  const zero=rat(0n);
+  function crossing(a,b,wall) {
+    const c=[wall[0],wall[1]],d=[wall[2],wall[3]];
+    const turn=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
+    const on=(p,q,r)=>Math.min(p[0],q[0])<=r[0] && r[0]<=Math.max(p[0],q[0]) && Math.min(p[1],q[1])<=r[1] && r[1]<=Math.max(p[1],q[1]);
+    const u=turn(a,b,c),v=turn(a,b,d),w=turn(c,d,a),x=turn(c,d,b);
+    return ((u<0&&v>0||u>0&&v<0)&&(w<0&&x>0||w>0&&x<0)) ||
+      (!u&&on(a,b,c)) || (!v&&on(a,b,d)) || (!w&&on(c,d,a)) || (!x&&on(c,d,b));
+  }
+  function Model(job) {
+    this.job=job; this.ar=new Arithmetic(); this.people=job.people; this.seats=job.layout.seats;
+    this.n=this.people.length; this.m=job.works.length; this.k=this.seats.length;
+    if(!this.n || !this.m) throw Error('参加者と作品が必要です。');
+    if(this.n>this.k) throw Error('総席数が不足しています。参加者'+this.n+'人、座席'+this.k+'席。');
+    const positions=new Set(),labels=new Set();
+    this.seats.forEach(s=>{
+      if(!Number.isSafeInteger(s.row)||s.row<1||!Number.isSafeInteger(s.col)||s.col<1||!String(s.table)) throw Error('座席位置・卓番号が不正です。');
+      const key=s.row+':'+s.col; if(positions.has(key)||labels.has(s.label)) throw Error('座席位置または座席番号が重複しています。');
+      positions.add(key); labels.add(s.label);
+    });
+    this.groups=[]; const phrases=new Map();
+    this.people.forEach((p,i)=>{
+      if(p.levels.length!==this.m || p.favorites.length!==this.m || p.levels.some(v=>!Number.isInteger(v)||v<1||v>5)) throw Error('作品レベルは全作品について1〜5が必要です。');
+      const phrase=String(p.passphrase||'');
+      if(phrase && phrases.has(phrase)) this.groups[phrases.get(phrase)].push(i);
+      else { if(phrase) phrases.set(phrase,this.groups.length); this.groups.push([i]); }
+    });
+    this.tables=Array.from(new Set(this.seats.map(s=>s.table))).map(t=>this.seats.map((s,p)=>s.table===t?p:-1).filter(p=>p>=0));
+    const max=Math.max(...this.tables.map(t=>t.length));
+    if(this.groups.some(g=>g.length>max)) throw Error('同伴者グループが最大の卓の定員を超えています。');
+    this.delta=delta(this.ar,this.m); const common=Array.from({length:this.n},()=>Array(this.n).fill(0)); let C=0;
+    for(let i=0;i<this.n;i++) for(let j=i+1;j<this.n;j++) {
+      let c=0; for(let k=0;k<this.m;k++) {
+        const a=new Set(this.people[i].favorites[k]),b=new Set(this.people[j].favorites[k]);
+        for(const name of a) if(name && b.has(name)) c++;
+      }
+      common[i][j]=common[j][i]=c; C=Math.max(C,c);
+    }
+    this.S=Array.from({length:this.n},()=>Array(this.n).fill(zero));
+    for(let i=0;i<this.n;i++) for(let j=i+1;j<this.n;j++) {
+      let N=0; for(let k=0;k<this.m;k++) N+=((this.people[i].levels[k]-1)**2-(this.people[j].levels[k]-1)**2)**2;
+      this.S[i][j]=this.S[j][i]=plus(base(this.ar,N),times(this.ar,this.delta,rat(BigInt(common[i][j]),BigInt(C+1))));
+    }
+    const h=decimal(job.horizontal),v=decimal(job.vertical),den=h[1]*v[1],H=h[0]*v[1],V=v[0]*h[1];
+    this.W=Array.from({length:this.k},()=>Array(this.k).fill(zero));
+    for(let p=0;p<this.k;p++) for(let q=p+1;q<this.k;q++) {
+      const a=this.seats[p],b=this.seats[q];
+      if((job.layout.walls||[]).some(w=>crossing([2*a.col,2*a.row],[2*b.col,2*b.row],w))) continue;
+      const dx=H*BigInt(a.col-b.col),dy=V*BigInt(a.row-b.row),R=dx*dx+dy*dy;
+      if(!R) throw Error('異なる座席が同じ位置にあります。');
+      const scaled=R*SCALE*SCALE,sq=isqrt(scaled),high=sq*sq===scaled?sq:sq+1n;
+      const val=value(floor(den*SCALE*SCALE,high),ceil(den*SCALE*SCALE,sq),numberRatio(den,1n)/Math.sqrt(numberRatio(R,1n)),()=>this.ar.rootPoly(R,fraction(den,R)));
+      this.W[p][q]=this.W[q][p]=val;
+    }
+    this.sortedPeople=this.S.map(row=>row.map((_,i)=>i).sort((a,b)=>-compare(this.ar,row[a],row[b])||a-b));
+    this.sortedSeats=this.W.map(row=>row.map((_,i)=>i).sort((a,b)=>-compare(this.ar,row[a],row[b])||a-b));
+  }
+  Model.prototype.valid=function(pos,complete=true) {
+    if(!Array.isArray(pos)||pos.length!==this.n) return false;
+    const used=new Set();
+    for(const p of pos) { if(p===-1&&!complete) continue; if(!Number.isInteger(p)||p<0||p>=this.k||used.has(p)) return false; used.add(p); }
+    return this.groups.every(g=>new Set(g.filter(i=>pos[i]>=0).map(i=>this.seats[pos[i]].table)).size<=1);
+  };
+  Model.prototype.utilities=function(pos) {
+    const u=Array(this.n).fill(zero);
+    for(let i=0;i<this.n;i++) for(let j=i+1;j<this.n;j++) {
+      const e=times(this.ar,this.S[i][j],this.W[pos[i]][pos[j]]); u[i]=plus(u[i],e); u[j]=plus(u[j],e);
+    }
+    return u;
+  };
+  Model.prototype.score=function(pos) { return this.utilities(pos).sort((a,b)=>compare(this.ar,a,b)); };
+  Model.prototype.cmp=function(a,b) {
+    for(let k=0;k<a.length;k++) { const c=compare(this.ar,a[k],b[k]); if(c) return c; } return 0;
+  };
+  Model.prototype.upper=function(pos) {
+    const used=new Set(pos.filter(p=>p>=0)),free=this.seats.map((_,p)=>p).filter(p=>!used.has(p)),upper=[];
+    for(let i=0;i<this.n;i++) {
+      let best=null; const others=this.sortedPeople[i].filter(j=>j!==i&&pos[j]<0);
+      for(const p of pos[i]>=0?[pos[i]]:free) {
+        let u=zero;
+        for(let j=0;j<this.n;j++) if(j!==i&&pos[j]>=0) u=plus(u,times(this.ar,this.S[i][j],this.W[p][pos[j]]));
+        const near=this.sortedSeats[p].filter(q=>q!==p&&!used.has(q));
+        for(let k=0;k<others.length;k++) u=plus(u,times(this.ar,this.S[i][others[k]],this.W[p][near[k]]));
+        if(!best || compare(this.ar,u,best)>0) best=u;
+      }
+      upper.push(best);
+    }
+    return upper.sort((a,b)=>compare(this.ar,a,b));
+  };
+  function nextInjection(a,n) {
+    if(!a.length) return false;
+    for(let k=a.length-1;k>=0;k--) {
+      const used=new Set(a.slice(0,k)); let v=a[k]+1;
+      while(v<n&&used.has(v)) v++;
+      if(v===n) continue;
+      a[k]=v; used.add(v);
+      for(let j=k+1;j<a.length;j++) { let q=0; while(used.has(q)) q++; a[j]=q; used.add(q); }
+      return true;
+    }
+    return false;
+  }
+  Model.prototype.frame=function(pos,remaining) { return {pos:pos.slice(),remaining:remaining.slice(),opened:false}; };
+  Model.prototype.open=function(frame) {
+    const used=new Set(frame.pos.filter(p=>p>=0)); let best=null;
+    for(const g of frame.remaining) {
+      const size=this.groups[g].length,tables=this.tables.map(t=>t.filter(p=>!used.has(p))).filter(t=>t.length>=size);
+      if(!tables.length) return false;
+      const count=tables.reduce((sum,t)=>{ let n=1; for(let k=0;k<size;k++) n*=t.length-k; return sum+n; },0);
+      if(!best||count<best.count||count===best.count&&(size>best.size||size===best.size&&g<best.g)) best={g,size,tables,count};
+    }
+    Object.assign(frame,{opened:true,g:best.g,tables:best.tables,ti:0,indices:null}); return true;
+  };
+  Model.prototype.child=function(frame) {
+    const group=this.groups[frame.g];
+    while(frame.ti<frame.tables.length) {
+      const seats=frame.tables[frame.ti];
+      if(frame.indices===null) frame.indices=group.map((_,i)=>i);
+      else if(!nextInjection(frame.indices,seats.length)) { frame.ti++; frame.indices=null; continue; }
+      const pos=frame.pos.slice(); group.forEach((i,k)=>{pos[i]=seats[frame.indices[k]];});
+      return this.frame(pos,frame.remaining.filter(g=>g!==frame.g));
+    }
+    return null;
+  };
+  function Search(job,saved) {
+    this.model=new Model(job); const m=this.model;
+    this.state=saved?JSON.parse(JSON.stringify(saved)):{phase:'feasible',best:null,nodes:0,pruned:0,
+      stack:[m.frame(Array(m.n).fill(-1),m.groups.map((_,i)=>i))],local:null};
+    const s=this.state;
+    if(!['feasible','local','exact','complete','infeasible'].includes(s.phase)||!Array.isArray(s.stack)) throw Error('保存した探索状態が不正です。');
+    if(s.best&&!m.valid(s.best)) throw Error('保存した配置が制約を満たしません。');
+    for(const frame of s.stack) {
+      if(!m.valid(frame.pos,false)||!Array.isArray(frame.remaining)) throw Error('保存した探索木が不正です。');
+      const remaining=m.groups.map((g,k)=>g.every(i=>frame.pos[i]<0)?k:-1).filter(k=>k>=0);
+      if(remaining.join(',')!==frame.remaining.slice().sort((a,b)=>a-b).join(',')||m.groups.some(g=>g.some(i=>frame.pos[i]<0)&&g.some(i=>frame.pos[i]>=0))) throw Error('保存した同伴者グループが不正です。');
+    }
+    if(s.phase==='feasible') {
+      if(!s.feasible) {
+        // 配置可否だけを調べる段階では、席順・卓の位置は区別しない。
+        // 旧形式の初期探索を再開した場合も、可否探索だけをこの方式でやり直す。
+        s.stack=[];
+        s.feasible={order:m.groups.map((_,i)=>i).sort((a,b)=>m.groups[b].length-m.groups[a].length||a-b),failed:{},
+          frames:[{depth:0,left:m.tables.map(t=>t.length),places:m.groups.map(()=>-1),opened:false}]};
+      }
+      const f=s.feasible,expected=m.groups.map((_,i)=>i).sort((a,b)=>m.groups[b].length-m.groups[a].length||a-b);
+      if(!f || !Array.isArray(f.order) || f.order.join(',')!==expected.join(',') || !Array.isArray(f.frames) || !f.failed || typeof f.failed!=='object') throw Error('保存した初期探索状態が不正です。');
+      for(const frame of f.frames) {
+        if(!Number.isInteger(frame.depth)||frame.depth<0||frame.depth>f.order.length||!Array.isArray(frame.left)||frame.left.length!==m.tables.length||!Array.isArray(frame.places)||frame.places.length!==m.groups.length) throw Error('保存した初期探索状態が不正です。');
+        const left=m.tables.map(t=>t.length);
+        for(let k=0;k<f.order.length;k++) {
+          const g=f.order[k],t=frame.places[g];
+          if(k>=frame.depth) {if(t!==-1)throw Error('保存したグループ配置が不正です。');}
+          else {if(!Number.isInteger(t)||t<0||t>=m.tables.length)throw Error('保存した卓が不正です。');left[t]-=m.groups[g].length;}
+        }
+        if(left.some((v,t)=>v<0||v!==frame.left[t]))throw Error('保存した残席数が不正です。');
+      }
+    }
+    this.bestScore=s.best?m.score(s.best):null;
+    this.localScore=s.local&&s.local.best?m.score(s.local.best):null;
+  }
+  Search.prototype.beginExact=function() {
+    const m=this.model,s=this.state; s.phase='exact'; s.local=null;
+    s.stack=[m.frame(Array(m.n).fill(-1),m.groups.map((_,i)=>i))];
+  };
+  Search.prototype.feasibleStep=function() {
+    const m=this.model,s=this.state,f=s.feasible;
+    if(!f.frames.length) {s.phase='infeasible';s.feasible=null;return;}
+    const frame=f.frames[f.frames.length-1];
+    if(!frame.opened) {
+      s.nodes++;
+      if(frame.depth===f.order.length) {
+        const pos=Array(m.n).fill(-1),cursor=m.tables.map(()=>0);
+        // 可否が分かってから、卓内の席を一度だけ具体化する。
+        f.order.forEach(g=>m.groups[g].forEach(i=>{const t=frame.places[g];pos[i]=m.tables[t][cursor[t]++];}));
+        if(!m.valid(pos))throw Error('初期配置の検証に失敗しました。');
+        s.best=pos;this.bestScore=m.score(pos);s.phase='local';s.local={i:0,p:0,best:null};s.feasible=null;return;
+      }
+      frame.key=frame.depth+'|'+frame.left.slice().sort((a,b)=>a-b).join(',');
+      if(f.failed[frame.key]===true) {s.pruned++;f.frames.pop();return;}
+      const need=m.groups[f.order[frame.depth]].length,tried=new Set();
+      frame.options=frame.left.map((_,t)=>t).filter(t=>frame.left[t]>=need)
+        .sort((a,b)=>frame.left[a]-frame.left[b]||a-b)
+        .filter(t=>{if(tried.has(frame.left[t]))return false;tried.add(frame.left[t]);return true;});
+      frame.next=0;frame.opened=true;
+    }
+    if(frame.next>=frame.options.length) {f.failed[frame.key]=true;s.pruned++;f.frames.pop();return;}
+    const t=frame.options[frame.next++],g=f.order[frame.depth],left=frame.left.slice(),places=frame.places.slice();
+    left[t]-=m.groups[g].length;places[g]=t;
+    f.frames.push({depth:frame.depth+1,left,places,opened:false});
+  };
+  Search.prototype.step=function() {
+    const m=this.model,s=this.state;
+    if(s.phase==='complete'||s.phase==='infeasible') return;
+    if(s.phase==='feasible') {this.feasibleStep();return;}
+    if(s.phase==='local') {
+      const l=s.local;
+      if(l.i>=m.n) {
+        if(l.best) { s.best=l.best; this.bestScore=this.localScore; s.local={i:0,p:0,best:null}; this.localScore=null; }
+        else this.beginExact();
+        return;
+      }
+      const i=l.i,p=l.p; l.p++; if(l.p>=m.k) {l.p=0;l.i++;}
+      if(s.best[i]===p) return;
+      const j=s.best.indexOf(p); if(j>=0&&j<i) return;
+      const pos=s.best.slice(); if(j>=0) pos[j]=pos[i]; pos[i]=p;
+      if(!m.valid(pos)) return;
+      const score=m.score(pos);
+      if(m.cmp(score,this.localScore||this.bestScore)>0) {l.best=pos;this.localScore=score;}
+      return;
+    }
+    if(!s.stack.length) {s.phase=s.best?'complete':'infeasible';return;}
+    const f=s.stack[s.stack.length-1];
+    if(!f.opened) {
+      s.nodes++;
+      if(!f.remaining.length) {
+        const score=m.score(f.pos);
+        if(!this.bestScore||m.cmp(score,this.bestScore)>0) {s.best=f.pos.slice();this.bestScore=score;}
+        s.stack.pop();
+        return;
+      }
+      if(s.phase==='exact'&&this.bestScore&&m.cmp(m.upper(f.pos),this.bestScore)<=0) {s.pruned++;s.stack.pop();return;}
+      if(!m.open(f)) {s.pruned++;s.stack.pop();return;}
+    }
+    const child=m.child(f); if(child) s.stack.push(child); else s.stack.pop();
+  };
+  Search.prototype.summary=function() {
+    if(this.summaryBest!==this.state.best) {
+      this.summaryBest=this.state.best;
+      this.summaryUtilities=this.state.best?this.model.utilities(this.state.best).map(v=>v.v):null;
+    }
+    return {phase:this.state.phase,nodes:this.state.nodes,pruned:this.state.pruned,
+      best:this.state.best?this.state.best.slice():null,utilities:this.summaryUtilities||null,
+      score:this.bestScore?this.bestScore.map(v=>v.v):null};
+  };
+  Search.prototype.save=function() { return {version:1,job:this.model.job,state:JSON.parse(JSON.stringify(this.state))}; };
+  return {Search,Model,decimal,crossing,compare,Arithmetic,delta};
+})();
+</script>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ja"><head><base target="_top"><meta charset="utf-8">
+<?!= seatInclude('SeatingStyle'); ?></head><body>
+<section id="entry-screen" class="screen" aria-label="入力の選択">
+ <div class="input-row distance-row"><div class="distance-fields"><label>横1セル当たりの距離<input id="horizontal" inputmode="decimal" value="1"></label><label>縦1セル当たりの距離<input id="vertical" inputmode="decimal" value="0.5"></label></div><button id="new" type="button">新規</button></div>
+ <div class="input-row"><label>シート<select id="checkpoint" disabled></select></label><button id="open" type="button" disabled>読み込み</button></div>
+ <div class="input-row"><label>JSONファイル<input id="json-file" type="file" accept=".json,application/json"></label><button id="import" type="button" disabled>インポート</button></div>
+ <div id="input-error" class="form-error" role="alert" hidden></div>
+</section>
+<section id="compute-screen" class="screen" aria-label="計算" hidden>
+ <div class="toolbar"><button id="start" type="button" class="primary" disabled>開始</button><button id="pause" type="button" disabled>停止</button></div>
+ <h2>計算ログ</h2><div id="status" role="log" aria-live="polite" aria-relevant="additions"><div class="entry">待機中</div></div>
+</section>
+<section id="output-screen" class="screen" aria-label="出力" hidden>
+ <div class="output-actions"><button id="back" type="button">戻る</button><button id="save" type="button" class="primary" disabled>保存</button><button id="export" type="button" disabled>エクスポート</button></div>
+ <h2>seat-solver ダウンロード</h2>
+ <div class="solver-downloads">
+  <button type="button" data-solver="windows-x64">Windows x64</button>
+  <button type="button" data-solver="windows-arm64">Windows ARM64</button>
+  <button type="button" data-solver="macos-x64">macOS Intel</button>
+  <button type="button" data-solver="macos-arm64">macOS Appleシリコン</button>
+  <button type="button" data-solver="linux-x64">Linux x64</button>
+  <button type="button" data-solver="linux-arm64">Linux ARM64</button>
+ </div>
+ <div id="output-error" class="form-error" role="alert" hidden></div>
+</section>
+<?!= seatInclude('SeatingEngine'); ?>
+<?!= seatInclude('SeatingSession'); ?>
+<?!= seatInclude('SeatingController'); ?></body></html>

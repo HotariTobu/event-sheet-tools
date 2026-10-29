@@ -1,0 +1,104 @@
+name: Release seat-solver
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - platform: windows-arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+          - platform: macos-x64
+            runner: macos-26-intel
+            target: x86_64-apple-darwin
+          - platform: macos-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          - platform: linux-x64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - platform: linux-arm64
+            runner: ubuntu-26.04-arm
+            target: aarch64-unknown-linux-gnu
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ matrix.target }}
+      PLATFORM: ${{ matrix.platform }}
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --target "$TARGET"
+      - name: Build
+        run: cargo +stable build --manifest-path cli/Cargo.toml --release --locked --target "$TARGET"
+      - name: Package executable (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $destination = Join-Path $env:RUNNER_TEMP 'release'
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          $source = "cli/target/$env:TARGET/release/seat-solver.exe"
+          $archive = Join-Path $destination "seat-solver-$env:PLATFORM.zip"
+          Compress-Archive -LiteralPath $source -DestinationPath $archive -CompressionLevel Optimal
+      - name: Package executable (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          cd "cli/target/$TARGET/release"
+          zip -j "$RUNNER_TEMP/release/seat-solver-$PLATFORM.zip" seat-solver
+      - uses: actions/upload-artifact@v7
+        with:
+          name: seat-solver-${{ matrix.platform }}
+          path: ${{ runner.temp }}/release/seat-solver-${{ matrix.platform }}.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: seat-solver-*
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+      - name: Publish all six archives
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            ${{ runner.temp }}/release/seat-solver-windows-x64.zip
+            ${{ runner.temp }}/release/seat-solver-windows-arm64.zip
+            ${{ runner.temp }}/release/seat-solver-macos-x64.zip
+            ${{ runner.temp }}/release/seat-solver-macos-arm64.zip
+            ${{ runner.temp }}/release/seat-solver-linux-x64.zip
+            ${{ runner.temp }}/release/seat-solver-linux-arm64.zip

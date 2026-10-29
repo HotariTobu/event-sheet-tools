@@ -1,0 +1,20 @@
+<script>
+/** ブラウザのDOM・GAS通信から独立した、編集中の探索状態。 */
+var SeatingSession = (function(){
+ 'use strict';
+ function Session(){this.search=null;this.source=null;this.started=false;this.running=false;this.dirty=false;}
+ Session.prototype.done=function(){return this.search&&['complete','infeasible'].includes(this.search.state.phase);};
+ Session.prototype.adopt=function(next,origin,isStarted,isSaved){this.search=next;this.source=origin;this.started=isStarted;this.dirty=!isSaved;this.running=false;};
+ Session.prototype.prepare=function(job){const next=new Seating.Search(job);this.adopt(next,null,false,false);};
+ Session.prototype.load=function(snapshot,origin){
+  if(!snapshot||snapshot.version!==1||!snapshot.job||snapshot.job.version!==1||!snapshot.state)throw Error('探索状態JSONの形式またはバージョンが不正です。');
+  const next=new Seating.Search(snapshot.job,snapshot.state);this.adopt(next,origin,true,!!origin);
+ };
+ Session.prototype.start=function(){if(!this.search||this.running||this.done())return false;this.started=true;this.running=true;return true;};
+ Session.prototype.pause=function(){this.running=false;};
+ Session.prototype.step=function(){if(!this.running)return;this.search.step();this.dirty=true;if(this.done())this.running=false;};
+ Session.prototype.saved=function(origin){this.source=origin;this.dirty=false;};
+ Session.prototype.snapshot=function(){if(!this.search)throw Error('探索状態がありません。');return this.search.save();};
+ return Session;
+})();
+</script>

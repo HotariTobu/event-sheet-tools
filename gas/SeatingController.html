@@ -1,0 +1,118 @@
+<script>
+(function(){
+ 'use strict';
+ const session=new SeatingSession(),el=id=>document.getElementById(id),done=()=>session.done();
+ const names={feasible:'同伴者制約を満たす初期配置を探索中',local:'席交換・空席移動で改善中',exact:'分枝限定法で厳密探索中',complete:'厳密探索完了：leximin最適解',infeasible:'指定の制約では配置できません'};
+ let busy=false,timer=null,idleTimer=false,lastLogKey='',view='entry',checkpointLoading=true;
+ function log(message,key,isError=false,link=null){
+  if(key&&key===lastLogKey)return;
+  const entry=document.createElement('div');entry.className='entry'+(isError?' is-error':'');entry.textContent=message;if(link)entry.appendChild(link);
+  const box=el('status');box.appendChild(entry);box.scrollTop=box.scrollHeight;lastLogKey=key||'';
+ }
+ function render(){
+  el('start').textContent=session.started?'再開':'開始';el('start').disabled=!session.search||session.running||busy||!!done();el('pause').disabled=!session.search||busy;
+  el('new').disabled=session.running||busy;
+  el('open').disabled=session.running||busy||checkpointLoading||!el('checkpoint').value;
+  el('import').disabled=session.running||busy||!el('json-file').files.length;
+  for(const id of ['save','export'])el(id).disabled=!session.search||session.running||busy;
+  el('back').disabled=busy;
+  document.querySelectorAll('[data-solver]').forEach(button=>button.disabled=busy);
+  for(const id of ['horizontal','vertical','json-file'])el(id).disabled=busy;
+  el('checkpoint').disabled=busy||checkpointLoading||!el('checkpoint').options.length;
+ }
+ function setView(next){view=next;for(const name of ['entry','compute','output'])el(name+'-screen').hidden=name!==view;render();}
+ function fail(error){session.pause();busy=false;cancelTick();const text=error.message||String(error);log('エラー：'+text,null,true);if(view==='entry'||view==='output')inputError(text);render();}
+ function call(name,...args){return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[name](...args));}
+ function inputError(text){const box=el(view==='output'?'output-error':'input-error');box.textContent=text;box.hidden=!text;}
+ async function loadChoices(){
+  try{
+   const items=await call('listSeatingCheckpoints');el('checkpoint').replaceChildren();
+   for(const item of items){const option=document.createElement('option');option.value=String(item.sheetId);option.textContent=item.name;el('checkpoint').appendChild(option);}
+   el('checkpoint').value=items.length?String(items[0].sheetId):'';
+  }catch(e){const text=e.message||String(e);log('エラー：'+text,null,true);if(view==='entry')inputError(text);}
+  finally{checkpointLoading=false;render();}
+ }
+ async function readInput(action){
+  if(busy||view!=='entry')return;inputError('');
+  try{
+   if(action==='new'){
+    const h=el('horizontal').value.trim(),v=el('vertical').value.trim();Seating.decimal(h);Seating.decimal(v);
+    busy=true;render();log('回答・座席配置を読み込み中');const job=await call('loadSeatingJob',h,v);session.prepare(job);
+    adopted();log('計算準備完了');
+   }else if(action==='open'){
+    const id=Number(el('checkpoint').value);if(el('checkpoint').value===''||!Number.isSafeInteger(id)||id<0)throw Error('シートを選択してください。');
+    const name=el('checkpoint').selectedOptions[0].textContent;busy=true;render();
+    const saved=await call('loadSeatingCheckpoint',id);session.load(saved,{sheetId:id,name});
+    adopted();log('「'+name+'」を読み込みました。');summary();
+   }else if(action==='import'){
+    const file=el('json-file').files[0];if(!file)throw Error('JSONファイルを選択してください。');busy=true;render();
+    const snapshot=JSON.parse((await file.text()).replace(/^\uFEFF/,''));
+    const saved=await call('validateSeatingFile',snapshot);session.load(saved,null);
+    adopted();log('「'+file.name+'」を読み込みました。');summary();
+   }
+  }catch(e){fail(e);}
+ }
+ for(const id of ['new','open','import'])el(id).addEventListener('click',()=>readInput(id));
+ el('checkpoint').addEventListener('change',render);el('json-file').addEventListener('change',render);
+ el('back').addEventListener('click',()=>{if(!busy)setView('compute');});
+ el('export').addEventListener('click',()=>{if(!busy&&session.search&&!session.running)try{exportFile();}catch(e){fail(e);}});
+ el('save').addEventListener('click',async()=>{
+  if(busy||!session.search||session.running)return;
+  inputError('');try{await persistResult();google.script.host.close();}catch(e){fail(e);}
+ });
+ function adopted(){busy=false;setView('compute');log(session.search.model.n+'人 / '+session.search.model.k+'席 / '+session.search.model.m+'作品');render();}
+ function summary(){
+  if(!session.search)return;const s=session.search.summary();
+  const message=names[s.phase]+(!session.running&&!done()?'（一時停止）':'')+'｜探索節点: '+s.nodes.toLocaleString()+'　除外した枝: '+s.pruned.toLocaleString()+(s.score?'｜最低効用: '+s.score[0].toPrecision(7):'');
+  log(message,[s.phase,session.running,s.best?s.best.join(','):'',session.running?Math.floor(Date.now()/1000):''].join('|'));
+ }
+ function scheduleTick(){idleTimer=typeof requestIdleCallback==='function';timer=idleTimer?requestIdleCallback(tick):setTimeout(tick,0);}
+ function cancelTick(){if(timer!==null){if(idleTimer)cancelIdleCallback(timer);else clearTimeout(timer);timer=null;}}
+ function tick(deadline){
+  timer=null;if(!session.running||!session.search)return;
+  try{const phase=session.search.state.phase;do{session.step();}while(session.running&&deadline&&deadline.timeRemaining()>0&&session.search.state.phase===phase);
+   summary();render();if(session.running)scheduleTick();else if(done())setView('output');
+  }catch(e){fail(e);}
+ }
+ el('start').addEventListener('click',()=>{if(!session.search||busy||session.running||done())return;session.start();render();summary();scheduleTick();});
+ el('pause').addEventListener('click',()=>{if(!session.search||busy)return;session.pause();cancelTick();render();summary();setView('output');});
+ const solverReleaseUrl='https://github.com/HotariTobu/event-sheet-tools/releases/latest/download/';
+ document.querySelectorAll('[data-solver]').forEach(button=>button.addEventListener('click',()=>{
+  if(busy||view!=='output')return;
+  window.open(solverReleaseUrl+'seat-solver-'+button.dataset.solver+'.zip','_blank','noopener');
+ }));
+ function exportFile(){
+  const blob=new Blob([JSON.stringify(session.snapshot())],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  const now=new Date(),pad=v=>String(v).padStart(2,'0');
+  a.href=url;a.download='checkpoint-'+pad(now.getMonth()+1)+pad(now.getDate())+'-'+pad(now.getHours())+pad(now.getMinutes())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);log('JSONを書き出しました。');
+ }
+    function legendImage(works) {
+      const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');
+      const width=1000,padding=20,lineHeight=28,font='16px sans-serif';
+      ctx.font=font;
+      const lines=[];let line='';
+      for(const char of works.join('｜')) {
+        if(line&&ctx.measureText(line+char).width>width-padding*2){lines.push(line);line='';}
+        line+=char;
+      }
+      if(line)lines.push(line);
+      const height=padding*2+lineHeight*(lines.length+2);
+      canvas.width=width*2;canvas.height=height*2;ctx.scale(2,2);
+      ctx.fillStyle='#ffffff';ctx.fillRect(0,0,width,height);
+      ctx.fillStyle='#202124';ctx.font=font;ctx.textBaseline='top';
+      ctx.fillText('作品レベルの並び順（左から）',padding,padding);
+      lines.forEach((text,i)=>ctx.fillText(text,padding,padding+lineHeight*(i+2)));
+      return {data:canvas.toDataURL('image/png').split(',')[1],width,height};
+    }
+ async function persistResult(){
+  if(!session.search||session.running||busy)return;const snapshot=session.snapshot(),job=snapshot.job,legend=legendImage(job.works);
+  busy=true;render();log('割り当てと探索状態をシートに保存中');
+  try{
+   const result=await call('publishSeatingResult',{horizontal:job.horizontal,vertical:job.vertical,fingerprint:job.fingerprint,assignment:snapshot.state.best,snapshot,legend});
+   session.saved({sheetId:result.sheetId,name:result.name});busy=false;
+   const link=document.createElement('a');link.href=result.url;link.textContent=result.name;link.target='_blank';link.rel='noopener';log('保存しました：',null,false,link);render();
+  }catch(e){busy=false;render();throw e;}
+ }
+ render();loadChoices();
+})();
+</script>
