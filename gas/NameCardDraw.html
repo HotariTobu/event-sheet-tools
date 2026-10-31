@@ -28,15 +28,18 @@ var NameCardDraw=(()=>{const ptToMm=25.4/72;
     if(namePt<28)warnings.push(prefix+'名前を'+namePt.toFixed(1)+'ptに縮小しています。');
     text(ctx,person.nickname,47.5,30.5,namePt,'#30313B','center');
     if(person.handle)text(ctx,'@'+person.handle,47.5,38.5,8,'#30313B','center');
-    const layout=nameCardFavoriteLayout(person,assets),cw=layout.columnWidth,boxes=layout.boxes,s=layout.scale;
+    const layout=nameCardFavoriteLayout(person,assets,ctx),cw=layout.columnWidth,boxes=layout.boxes,s=layout.scale;
     let y=42;
     for(let i=0;i<boxes.length;i+=2){
       const pair=boxes.slice(i,i+2),h=Math.max(...pair.map(b=>b.height));
       pair.forEach((b,j)=>{
         const x=5+j*(cw+2);ctx.fillStyle=b.g.color;ctx.globalAlpha=.06;ctx.beginPath();ctx.roundRect(x,y,cw,h,1.2*s);ctx.fill();ctx.globalAlpha=1;
         text(ctx,b.g.label,x+2*s,y+2.8*s,5.8*s,b.g.color);
-        b.icons.forEach((path,k)=>contain(ctx,images[path],x+2*s+(k%b.perRow)*5.5*s,y+4*s+Math.floor(k/b.perRow)*5.5*s,5*s,5*s));
-        nameCardDrawFallback(ctx,b,images,x+2*s,y,s);
+        b.items.forEach(item=>{
+          const left=x+2*s+item.x,top=y+4*s+item.y;
+          if(item.asset)contain(ctx,images[item.asset],left,top,item.width,item.height);
+          else text(ctx,item.name,left,top+(item.height+6.1*s*ptToMm*.75)/2,item.fontPt);
+        });
       });y+=h+1.2*s;
     }
     if(person.handle){
@@ -51,65 +54,46 @@ var NameCardDraw=(()=>{const ptToMm=25.4/72;
     return {canvas,warnings,namePt};
   }
 return {render};})();
-function nameCardFavoriteLayout(person,assets){
-  var cw=person.handle?28.5:41.5;
-  function key(s){return s.normalize('NFC').replace(/\s/g,'');}
-  var source=[];
-  assets.tokens.groups.forEach(function(g,i){
-    if(!person.favorites[i].length)return;
-    var icons=[],names=[],inlineIcons=[];
-    person.favorites[i].forEach(function(name){
-      var member=assets.members.find(function(m){return m.group===g.id&&key(m.name)===key(name);});
-      if(member&&member.asset&&!member.preserveTextSlot)icons.push(member.asset);else {names.push(name);if(member&&member.asset)inlineIcons.push({name:name,asset:member.asset});}
-    });
-    source.push({g:g,icons:icons,names:names,inlineIcons:inlineIcons});
+function nameCardFavoriteLayout(person,assets,ctx){
+  const cw=person.handle?28.5:41.5;
+  const key=value=>value.normalize('NFC').replace(/\s/g,'');
+  const source=assets.tokens.groups.flatMap((g,i)=>{
+    if(!person.favorites[i].length)return [];
+    return [{g,items:person.favorites[i].map(name=>{
+      const member=assets.members.find(m=>m.group===g.id&&key(m.name)===key(name));
+      return {name,asset:member&&member.asset||null};
+    })}];
   });
   function build(scale){
-    var boxes=source.map(function(b){
-      var perRow=Math.max(1,Math.floor((cw-4*scale)/(5.5*scale))),iconRows=Math.ceil(b.icons.length/perRow),lines=[],line='';
-      function width(value){return Array.from(value).reduce(function(sum,c){return sum+(c.charCodeAt(0)<256?.65:1);},0)*6.1*scale*25.4/72;}
-      Array.from(b.names.join('・')).forEach(function(c){if(line&&width(line+c)>cw-4*scale){lines.push(line);line='';}line+=c;});
-      if(line)lines.push(line);
-      return {g:b.g,icons:b.icons,names:b.names,inlineIcons:b.inlineIcons,lines:lines,perRow:perRow,iconRows:iconRows,height:(4.8+iconRows*5.5+lines.length*2.7)*scale};
+    const available=cw-4*scale,gap=.5*scale;
+    const boxes=source.map(box=>{
+      let x=0,y=0,rowHeight=0;
+      const items=box.items.map(item=>{
+        let width=5*scale,height=5*scale,fontPt=6.1*scale;
+        if(!item.asset){
+          ctx.font=(fontPt*25.4/72)+'px CardRounded';
+          width=ctx.measureText(item.name).width;
+          if(width>available){fontPt*=available/width;width=available;}
+          height=fontPt*25.4/72*1.25;
+        }
+        if(x>0&&x+width>available+1e-9){y+=rowHeight+gap;x=0;rowHeight=0;}
+        const placed={...item,x,y,width,height,fontPt};
+        x+=width+gap;rowHeight=Math.max(rowHeight,height);
+        return placed;
+      });
+      return {g:box.g,items,height:4.8*scale+y+rowHeight};
     });
-    var height=0;
-    for(var i=0;i<boxes.length;i+=2){if(i)height+=1.2*scale;height+=Math.max(boxes[i].height,boxes[i+1]?boxes[i+1].height:0);}
-    return {scale:scale,columnWidth:cw,boxes:boxes,height:height};
+    let height=0;
+    for(let i=0;i<boxes.length;i+=2){
+      if(i)height+=1.2*scale;
+      height+=Math.max(boxes[i].height,boxes[i+1]?.height||0);
+    }
+    return {scale,columnWidth:cw,boxes,height};
   }
-  var normal=build(1);if(normal.height<=35)return normal;
-  // 縮尺を0.1%単位で比較。アイコンの段数・名前の折り返しも毎回再計算する。
-  var low=0,high=1000;
-  while(high-low>1){var mid=Math.floor((low+high)/2);if(build(mid/1000).height<=35)low=mid;else high=mid;}
+  const normal=build(1);if(normal.height<=35)return normal;
+  let low=0,high=1000;
+  while(high-low>1){const mid=Math.floor((low+high)/2);if(build(mid/1000).height<=35)low=mid;else high=mid;}
   if(low)return build(low/1000);
-  // 固定選択肢を超える長文でも、内容を捨てずに収める。
-  var small=build(.001);return build(.001*35/small.height);
+  const small=build(.001);return build(.001*35/small.height);
 }
-
-
-/** 106期は従来の氏名欄だけを置き換え、他の要素の縮尺・改行・位置を維持する。 */
-function nameCardDrawFallback(ctx,box,images,x,y,scale){
-  var joined=box.names.join('・'),ranges=[];
-  box.inlineIcons.forEach(function(icon){
-    var offset=joined.indexOf(icon.name),start=Array.from(joined.slice(0,offset)).length;
-    ranges.push({start:start,end:start+Array.from(icon.name).length,asset:icon.asset,drawn:false});
-  });
-  var offset=0;
-  box.lines.forEach(function(line,index){
-    var characters=Array.from(line),end=offset+characters.length,baseline=y+(6.5+box.iconRows*5.5+index*2.7)*scale;
-    var matched=ranges.filter(function(range){return range.start<end&&range.end>offset;});
-    ctx.omitTextRanges=matched.map(function(range){return [Math.max(0,range.start-offset),Math.min(characters.length,range.end-offset)];});
-    ctx.font=(6.1*scale*(25.4/72))+'px CardRounded';ctx.fillStyle='#30313B';ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.fillText(line,x,baseline);
-    ctx.omitTextRanges=null;
-    matched.forEach(function(range){
-      if(range.drawn)return;
-      var start=Math.max(0,range.start-offset),stop=Math.min(characters.length,range.end-offset);
-      var left=x+ctx.measureText(characters.slice(0,start).join('')).width;
-      var width=ctx.measureText(characters.slice(start,stop).join('')).width,image=images[range.asset];
-      var height=2.15*scale,factor=Math.min(width/image.naturalWidth,height/image.naturalHeight),w=image.naturalWidth*factor,h=image.naturalHeight*factor;
-      ctx.drawImage(image,left+(width-w)/2,baseline-1.9*scale+(height-h)/2,w,h);range.drawn=true;
-    });
-    offset=end;
-  });
-}
-
 </script>
