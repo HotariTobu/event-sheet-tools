@@ -38,7 +38,7 @@ var NameCardDraw=(()=>{const ptToMm=25.4/72;
         b.items.forEach(item=>{
           const left=x+2*s+item.x,top=y+4*s+item.y;
           if(item.asset)contain(ctx,images[item.asset],left,top,item.width,item.height);
-          else text(ctx,item.name,left,top+(item.height+6.1*s*ptToMm*.75)/2,item.fontPt);
+          else text(ctx,item.label,left,top+(item.height+6.1*s*ptToMm*.75)/2,item.fontPt);
         });
       });y+=h+1.2*s;
     }
@@ -68,16 +68,17 @@ function nameCardFavoriteLayout(person,assets,ctx){
     const available=cw-4*scale,gap=.5*scale;
     const boxes=source.map(box=>{
       let x=0,y=0,rowHeight=0;
-      const items=box.items.map(item=>{
+      const items=box.items.map((item,index)=>{
+        const label=(!item.asset&&index>0&&!box.items[index-1].asset?'・':'')+item.name;
         let width=5*scale,height=5*scale,fontPt=6.1*scale;
         if(!item.asset){
           ctx.font=(fontPt*25.4/72)+'px CardRounded';
-          width=ctx.measureText(item.name).width;
+          width=ctx.measureText(label).width;
           if(width>available){fontPt*=available/width;width=available;}
           height=fontPt*25.4/72*1.25;
         }
         if(x>0&&x+width>available+1e-9){y+=rowHeight+gap;x=0;rowHeight=0;}
-        const placed={...item,x,y,width,height,fontPt};
+        const placed={...item,label,x,y,width,height,fontPt};
         x+=width+gap;rowHeight=Math.max(rowHeight,height);
         return placed;
       });
