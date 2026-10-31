@@ -1,51 +1,98 @@
-<!doctype html><html><head><base target="_top"><meta charset="UTF-8"><style>
-body{margin:20px;font:14px system-ui,sans-serif;color:#30313b}#status{white-space:pre-wrap;overflow-wrap:anywhere}select,button{font:inherit;padding:6px;margin:0 12px 10px 4px}#layout{margin:0 0 14px;line-height:1.6}
-</style></head><body>
-<label>用紙<select id="paper"><option value="A4">A4</option><option value="A3">A3</option><option value="B5">B5（JIS）</option><option value="B4">B4（JIS）</option></select></label>
-<div id="layout"></div><button id="create">シート作成</button><div id="status"></div>
-<script>
-const printLayouts=<?!= printLayouts ?>;
-function updatePrintLayout(){
-  const p=printLayouts[document.getElementById('paper').value];
-  document.getElementById('layout').textContent=p.columns+'列 × '+p.rows+'行（'+p.columns*p.rows+'枚／ページ）';
-}
-document.getElementById('paper').addEventListener('change',updatePrintLayout);
-updatePrintLayout();
-function nameCardCall(method,...args){return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[method](...args));}
-async function nameCardDecodeImage(image){
-  const url=URL.createObjectURL(new Blob([new Uint8Array(image.bytes)],{type:image.type}));
-  try{
-    const element=new Image();element.src=url;await element.decode();
-    const canvas=document.createElement('canvas');canvas.width=element.naturalWidth;canvas.height=element.naturalHeight;
-    canvas.getContext('2d').drawImage(element,0,0);
-    const png=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('画像を読み込めません：'+image.path)),'image/png'));
-    return {path:image.path,bytes:Array.from(new Uint8Array(await png.arrayBuffer()))};
-  }finally{URL.revokeObjectURL(url);}
-}
-document.getElementById('create').addEventListener('click',async()=>{
-  const status=document.getElementById('status'),paper=document.getElementById('paper'),button=document.getElementById('create');
-  paper.disabled=button.disabled=true;let job=null,stopPolling=false,timer=null,shown=0;
-  try{
-    status.textContent='シートを準備中…';
-    job=await nameCardCall('beginNameCardJob',{paper:paper.value});
-    status.textContent='画像・フォントを取得中…';
-    const resources=await nameCardCall('prepareNameCardResources',job.jobId);
-    if(resources.images.length){
-      let decoded=0;status.textContent='画像を読み込み中：0／'+resources.images.length+'点';
-      const images=await Promise.all(resources.images.map(async image=>{
-        const result=await nameCardDecodeImage(image);decoded++;status.textContent='画像を読み込み中：'+decoded+'／'+resources.images.length+'点';return result;
-      }));
-      await nameCardCall('completeNameCardResources',{jobId:job.jobId,images});
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    body{margin:20px;font:14px system-ui,sans-serif;color:#30313b}
+    #status{white-space:pre-wrap;overflow-wrap:anywhere}
+    select,button{font:inherit;padding:6px;margin:0 12px 10px 4px}
+    #layout{margin:0 0 14px;line-height:1.6}
+  </style>
+</head>
+<body>
+  <label>用紙<select id="paper"><option value="A4">A4</option><option value="A3">A3</option><option value="B5">B5（JIS）</option><option value="B4">B4（JIS）</option></select></label>
+  <div id="layout"></div>
+  <button id="create">シート作成</button>
+  <div id="status" role="status" aria-live="polite"></div>
+  <?!= HtmlService.createHtmlOutputFromFile('NameCardAssets').getContent() ?>
+  <?!= HtmlService.createHtmlOutputFromFile('NameCardEmbedded').getContent() ?>
+  <?!= HtmlService.createHtmlOutputFromFile('NameCardQr').getContent() ?>
+  <?!= HtmlService.createHtmlOutputFromFile('NameCardGraphics').getContent() ?>
+  <?!= HtmlService.createHtmlOutputFromFile('NameCardDraw').getContent() ?>
+  <?!= HtmlService.createHtmlOutputFromFile('NameCardResources').getContent() ?>
+  <script>
+    const printLayouts=<?!= printLayouts ?>;
+    const paper=document.getElementById('paper');
+    const button=document.getElementById('create');
+    const status=document.getElementById('status');
+    function updatePrintLayout(){
+      const layout=printLayouts[paper.value];
+      document.getElementById('layout').textContent=layout.columns+'列 × '+layout.rows+'行（'+layout.columns*layout.rows+'枚／ページ）';
     }
-    function show(p){shown=Math.max(shown,p.done);status.textContent=(p.phase==='finishing'?'PDFリンクを設定中':p.errors.length?'一部の処理でエラー':'名刺を生成・配置中')+'：'+shown+'／'+p.total+'人'+(p.errors.length?'\n'+p.errors.join('\n'):'');}
-    async function poll(){if(stopPolling)return;try{const p=await nameCardCall('getNameCardProgress',job.jobId);if(!stopPolling)show(p);}catch(e){if(!stopPolling)status.textContent='進捗取得エラー：'+(e.message||String(e));}finally{if(!stopPolling)timer=setTimeout(poll,1000);}}
-    show({done:0,total:job.total,phase:'active',errors:[]});poll();
-    const results=await Promise.allSettled(job.batches.map(batchIndex=>nameCardCall('runNameCardBatch',{jobId:job.jobId,batchIndex})));
-    stopPolling=true;if(timer!==null)clearTimeout(timer);
-    const failure=results.find(r=>r.status==='rejected');
-    if(failure){const recovered=await nameCardCall('abortNameCardJob',job.jobId);if(!recovered)throw failure.reason;}
-    else {show({done:job.total,total:job.total,phase:'finishing',errors:[]});await nameCardCall('finishNameCardJob',job.jobId);}
-    google.script.host.close();
-  }catch(e){stopPolling=true;if(timer!==null)clearTimeout(timer);if(job){try{await nameCardCall('abortNameCardJob',job.jobId);}catch(cleanupError){}}status.textContent=(job?'配置済み：'+shown+'／'+job.total+'人\n':'')+'エラー：'+(e.message||String(e));paper.disabled=button.disabled=false;}
-});
-</script></body></html>
+    paper.addEventListener('change',updatePrintLayout);
+    updatePrintLayout();
+    function nameCardCall(method,...args){
+      return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[method](...args));
+    }
+    function errorMessage(error){return error&&error.message||String(error);}
+    function nameCardProgress(jobId,total){
+      let stopped=false,timer=null,shown=0;
+      async function poll(){
+        try{
+          const progress=await nameCardCall('getNameCardProgress',jobId);
+          if(stopped)return;
+          shown=Math.max(shown,progress.done);
+          status.textContent='名刺を配置中：'+shown+'／'+total+'人'+(progress.errors.length?'\n'+progress.errors.join('\n'):'');
+        }catch(error){if(!stopped)status.textContent='進捗取得エラー：'+errorMessage(error);}
+        finally{if(!stopped)timer=setTimeout(poll,1000);}
+      }
+      status.textContent='名刺を配置中：0／'+total+'人';
+      poll();
+      return ()=>{stopped=true;if(timer!==null)clearTimeout(timer);};
+    }
+    async function createNameCards(){
+      paper.disabled=button.disabled=true;
+      let job=null,stopProgress=()=>{};
+      try{
+        status.textContent='回答を読み込み中…';
+        const data=await nameCardCall('loadNameCardData');
+        const resources=await nameCardLoadResources(data.people,message=>{status.textContent=message;});
+        const cards=[];
+        try{
+          for(let index=0;index<data.people.length;index++){
+            status.textContent='名刺画像を生成中：'+index+'／'+data.people.length+'人';
+            await new Promise(resolve=>setTimeout(resolve,0));
+            const person=data.people[index],rendered=NameCardDraw.render(person,resources);
+            cards.push({index,nickname:person.nickname,row:person.row,blob:await nameCardPng(rendered.canvas)});
+          }
+        }finally{resources.dispose();}
+        status.textContent='シートを準備中…';
+        job=await nameCardCall('beginNameCardJob',{version:3,paper:paper.value,hash:data.hash});
+        stopProgress=nameCardProgress(job.jobId,job.total);
+        const results=await Promise.allSettled(job.batches.map(async batch=>{
+          const images=await Promise.all(cards.slice(batch.start,batch.end).map(async card=>({index:card.index,nickname:card.nickname,row:card.row,bytes:Array.from(new Uint8Array(await card.blob.arrayBuffer()))})));
+          return nameCardCall('runNameCardBatch',{jobId:job.jobId,batchIndex:batch.index,cards:images});
+        }));
+        stopProgress();
+        const errors=Array.from(new Set(results.filter(result=>result.status==='rejected').map(result=>errorMessage(result.reason))));
+        if(errors.length)throw new Error(errors.join('\n'));
+        status.textContent='PDFリンクを設定中…';
+        await nameCardCall('finishNameCardJob',job.jobId);
+        job=null;
+        google.script.host.close();
+      }catch(error){
+        stopProgress();
+        let message=errorMessage(error);
+        if(job){
+          try{await nameCardCall('abortNameCardJob',job.jobId);}
+          catch(cleanupError){message+='\n終了処理エラー：'+errorMessage(cleanupError);}
+        }
+        status.textContent='エラー：'+message;
+        paper.disabled=button.disabled=false;
+      }
+    }
+    button.addEventListener('click',createNameCards);
+  </script>
+</body>
+</html>

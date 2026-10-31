@@ -1,0 +1,53 @@
+<script>
+function nameCardImagePaths(people){
+  const paths=new Set(),assets=NameCardAssets,key=name=>name.normalize('NFC').replace(/\s/g,'');
+  people.forEach(person=>{
+    const highest=Math.max(...person.ratings.filter(value=>value!==null));
+    assets.tokens.groups.forEach((group,index)=>{
+      if(person.ratings[index]===highest)paths.add(group.watermark);
+      person.favorites[index].forEach(name=>{
+        const member=assets.members.find(member=>member.group===group.id&&key(member.name)===key(name));
+        if(member&&member.asset)paths.add(member.asset);
+      });
+    });
+  });
+  return [...paths];
+}
+async function nameCardLoadResources(people,show){
+  const assets=NameCardAssets,paths=nameCardImagePaths(people),images={},total=paths.length+1;let done=0;
+  function progress(){show('素材を読み込み中：'+done+'／'+total+'点');}
+  function dispose(){NameCardNative.setFont(null);}
+  progress();
+  async function loadFont(){
+    const response=await fetch('https://raw.githubusercontent.com/google/fonts/main/apache/kosugimaru/KosugiMaru-Regular.ttf',{mode:'cors',credentials:'omit'});
+    if(!response.ok)throw new Error('フォントを取得できません（HTTP '+response.status+'）');
+    NameCardNative.setFont(opentype.parse(await response.arrayBuffer()));done++;progress();
+  }
+  async function loadImages(){
+    const element=document.getElementById('name-card-embedded');
+    if(!element)throw new Error('名刺素材がありません。');
+    const embedded=JSON.parse(element.textContent);
+    if(embedded.version!==1)throw new Error('名刺素材の形式が不正です。');
+    for(const path of paths){
+      const encoded=embedded.images[path];
+      if(typeof encoded!=='string')throw new Error('必要な素材が不足しています。');
+      const binary=atob(encoded),bytes=new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+      images[path]=NameCardNative.decode(bytes);done++;progress();
+    }
+    if(paths.some(path=>!images[path]))throw new Error('必要な素材が不足しています。');
+  }
+  const results=await Promise.allSettled([loadFont(),loadImages()]);
+  const failure=results.find(result=>result.status==='rejected');if(failure){dispose();throw failure.reason;}
+  return {assets,images,dispose};
+}
+async function nameCardPng(canvas){
+  for(;;){
+    const bytes=NameCardNative.png(canvas);
+    if(bytes.length<=2000000)return new Blob([bytes],{type:'image/png'});
+    const ratio=Math.min(.95,Math.sqrt(1950000/bytes.length)),smaller=new NameCardNative.Raster();
+    smaller.width=Math.max(1,Math.floor(canvas.width*ratio));smaller.height=Math.max(1,Math.floor(canvas.height*ratio));
+    smaller.getContext('2d').drawImage(canvas,0,0,smaller.width,smaller.height);canvas=smaller;
+  }
+}
+</script>
