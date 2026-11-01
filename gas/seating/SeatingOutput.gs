@@ -1,6 +1,6 @@
 /** 割当と凡例を描画する。保存先の選択・シート作成・探索状態の保存は行わない。 */
 function seatRenderAssignment_(output, job, pos, legend) {
-    var palette = JSON.parse(HtmlService.createHtmlOutputFromFile('SeatingColors').getContent());
+    var palette = SEATING_LEVEL_PALETTE;
     var occupant = new Map(); (pos || []).forEach(function(p, i) { occupant.set(p, i); });
     var rows = new Set(), columns = new Set();
     job.layout.seats.forEach(function(seat, p) {

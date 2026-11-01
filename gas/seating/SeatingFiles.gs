@@ -50,8 +50,7 @@ function publishSeatingResult(request) {
     var name = request.name == null ? suggestedSeatingName() : String(request.name).trim();
     if (!name || name.length > 100 || /[\\/?*\[\]:]/.test(name)) throw new Error('シート名が不正です。');
     if (ss.getSheetByName(name)) throw new Error('同じ名前のシートが既にあります。');
-    var copied = Sheets.Spreadsheets.batchUpdate({requests: [{duplicateSheet: {sourceSheetId: source.getSheetId(), insertSheetIndex: ss.getNumSheets(), newSheetName: name}}]}, ss.getId());
-    output = createdOutputSheet_(ss.getId(), copied.replies[0].duplicateSheet.properties.sheetId); created = true;
+    output = ss.insertSheet(name, ss.getNumSheets(), {template: source}); created = true;
     // 元の1行目の座席を残したまま、状態専用の行を先頭に確保する。
     output.insertRowsBefore(1, 1);
     seatRenderAssignment_(output, job, pos, legend);

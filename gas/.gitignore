@@ -1,3 +1,2 @@
-.clasp.json
-NameCard.gs
-NameCardPage.html
+/dist/
+/node_modules/

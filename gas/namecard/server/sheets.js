@@ -1,7 +1,4 @@
 /** Sheet access and job coordination only. This file is built into gas/NameCard.gs. */
-function createNameCards(){
-  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutputFromFile('NameCardPage').setWidth(520).setHeight(310),'名刺シート作成');
-}
 function cardRead(){
   var sheet=SpreadsheetApp.getActiveSpreadsheet().getSheetByName('回答');if(!sheet)throw Error('回答シート「回答」がありません。');
   var data=sheet.getDataRange().getDisplayValues(),headers=data.shift()||[],errors=[];
@@ -42,7 +39,10 @@ function cardJob_(id){
 }
 function cardStates_(job){var all=PropertiesService.getUserProperties().getProperties();return job.batches.map(function(batch){return JSON.parse(all[cardKey_(job.id)+':'+batch.index]||'null');});}
 function cardClear_(job){var props=PropertiesService.getUserProperties();props.deleteProperty(cardKey_(job.id));job.batches.forEach(function(batch){props.deleteProperty(cardKey_(job.id)+':'+batch.index);});}
-function cardSheet_(job){return createdOutputSheet_(job.spreadsheetId,job.sheetId);}
+function cardSheet_(job){
+  var sheet=SpreadsheetApp.getActiveSpreadsheet().getSheetById(job.sheetId);
+  if(!sheet)throw Error('作成中の名刺シートが見つかりません。');return sheet;
+}
 function cardBegin(request){
   var print=request&&CARD_PRINT[request.paper];if(!print)throw Error('用紙サイズを選択してください。');
   var input=cardRead();if(request.hash!==input.hash)throw Error('画像の生成中に回答が変更されました。作成をやり直してください。');
@@ -55,9 +55,8 @@ function cardBegin(request){
     try{
       var base='名刺 '+Utilities.formatDate(new Date(),ss.getSpreadsheetTimeZone(),'MMdd HHmm'),name=base,suffix=2;
       while(ss.getSheetByName(name))name=base+' ('+suffix+++')';
-      var added=Sheets.Spreadsheets.batchUpdate({requests:[{addSheet:{properties:{title:name,index:ss.getNumSheets()}}}]},ss.getId());job.sheetId=added.replies[0].addSheet.properties.sheetId;job.name=name;
+      var sheet=ss.insertSheet(name,ss.getNumSheets());job.sheetId=sheet.getSheetId();job.name=name;
     }finally{lock.releaseLock();}
-    var sheet=cardSheet_(job);
     if(sheet.getMaxRows()<job.rows+1)sheet.insertRowsAfter(sheet.getMaxRows(),job.rows+1-sheet.getMaxRows());
     if(sheet.getMaxColumns()<print.columns)sheet.insertColumnsAfter(sheet.getMaxColumns(),print.columns-sheet.getMaxColumns());
     sheet.setColumnWidths(1,print.columns,CARD_CELL.width);sheet.setRowHeight(1,28);sheet.setRowHeights(2,job.rows,CARD_CELL.height);sheet.setHiddenGridlines(true);
