@@ -1,0 +1,342 @@
+[
+  {
+    "name": "高坂穂乃果",
+    "group": "muse",
+    "asset": "assets/icons/muse-01.png"
+  },
+  {
+    "name": "絢瀬絵里",
+    "group": "muse",
+    "asset": "assets/icons/muse-02.png"
+  },
+  {
+    "name": "南ことり",
+    "group": "muse",
+    "asset": "assets/icons/muse-03.png"
+  },
+  {
+    "name": "園田海未",
+    "group": "muse",
+    "asset": "assets/icons/muse-04.png"
+  },
+  {
+    "name": "星空凛",
+    "group": "muse",
+    "asset": "assets/icons/muse-05.png"
+  },
+  {
+    "name": "西木野真姫",
+    "group": "muse",
+    "asset": "assets/icons/muse-06.png"
+  },
+  {
+    "name": "東條希",
+    "group": "muse",
+    "asset": "assets/icons/muse-07.png"
+  },
+  {
+    "name": "小泉花陽",
+    "group": "muse",
+    "asset": "assets/icons/muse-08.png"
+  },
+  {
+    "name": "矢澤にこ",
+    "group": "muse",
+    "asset": "assets/icons/muse-09.png"
+  },
+  {
+    "name": "高海千歌",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-10.png"
+  },
+  {
+    "name": "桜内梨子",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-11.png"
+  },
+  {
+    "name": "松浦果南",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-12.png"
+  },
+  {
+    "name": "黒澤ダイヤ",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-13.png"
+  },
+  {
+    "name": "渡辺曜",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-14.png"
+  },
+  {
+    "name": "津島善子",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-15.png"
+  },
+  {
+    "name": "国木田花丸",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-16.png"
+  },
+  {
+    "name": "小原鞠莉",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-17.png"
+  },
+  {
+    "name": "黒澤ルビィ",
+    "group": "aqours",
+    "asset": "assets/icons/aqours-18.png"
+  },
+  {
+    "name": "高咲侑",
+    "group": "nijigasaki",
+    "asset": null
+  },
+  {
+    "name": "上原歩夢",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-20.png"
+  },
+  {
+    "name": "中須かすみ",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-21.png"
+  },
+  {
+    "name": "桜坂しずく",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-22.png"
+  },
+  {
+    "name": "朝香果林",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-23.png"
+  },
+  {
+    "name": "宮下愛",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-24.png"
+  },
+  {
+    "name": "近江彼方",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-25.png"
+  },
+  {
+    "name": "優木せつ菜",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-26.png"
+  },
+  {
+    "name": "エマ・ヴェルデ",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-27.png"
+  },
+  {
+    "name": "天王寺璃奈",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-28.png"
+  },
+  {
+    "name": "三船栞子",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-29.png"
+  },
+  {
+    "name": "ミア・テイラー",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-30.png"
+  },
+  {
+    "name": "鐘嵐珠",
+    "group": "nijigasaki",
+    "asset": "assets/icons/nijigasaki-31.png"
+  },
+  {
+    "name": "澁谷かのん",
+    "group": "liella",
+    "asset": "assets/icons/liella-32.png"
+  },
+  {
+    "name": "唐可可",
+    "group": "liella",
+    "asset": "assets/icons/liella-33.png"
+  },
+  {
+    "name": "嵐千砂都",
+    "group": "liella",
+    "asset": "assets/icons/liella-34.png"
+  },
+  {
+    "name": "平安名すみれ",
+    "group": "liella",
+    "asset": "assets/icons/liella-35.png"
+  },
+  {
+    "name": "葉月恋",
+    "group": "liella",
+    "asset": "assets/icons/liella-36.png"
+  },
+  {
+    "name": "桜小路きな子",
+    "group": "liella",
+    "asset": "assets/icons/liella-37.png"
+  },
+  {
+    "name": "米女メイ",
+    "group": "liella",
+    "asset": "assets/icons/liella-38.png"
+  },
+  {
+    "name": "若菜四季",
+    "group": "liella",
+    "asset": "assets/icons/liella-39.png"
+  },
+  {
+    "name": "鬼塚夏美",
+    "group": "liella",
+    "asset": "assets/icons/liella-40.png"
+  },
+  {
+    "name": "ウィーン・マルガレーテ",
+    "group": "liella",
+    "asset": "assets/icons/liella-41.png"
+  },
+  {
+    "name": "鬼塚冬毬",
+    "group": "liella",
+    "asset": "assets/icons/liella-42.png"
+  },
+  {
+    "name": "日野下花帆",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-43.png"
+  },
+  {
+    "name": "村野さやか",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-44.png"
+  },
+  {
+    "name": "乙宗梢",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-45.png"
+  },
+  {
+    "name": "夕霧綴理",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-46.png"
+  },
+  {
+    "name": "大沢瑠璃乃",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-47.png"
+  },
+  {
+    "name": "藤島慈",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-48.png"
+  },
+  {
+    "name": "百生吟子",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-49.png"
+  },
+  {
+    "name": "徒町小鈴",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-50.png"
+  },
+  {
+    "name": "安養寺姫芽",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-51.png"
+  },
+  {
+    "name": "セラス 柳田 リリエンフェルト",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-52.png"
+  },
+  {
+    "name": "桂城泉",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-53.png"
+  },
+  {
+    "name": "錦上マイカ",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-maika.png"
+  },
+  {
+    "name": "令沢葵",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-aoi.png"
+  },
+  {
+    "name": "紫輪みおん",
+    "group": "hasunosora",
+    "asset": "assets/icons/hasunosora-mion.png"
+  },
+  {
+    "name": "高橋ポルカ",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-54.png"
+  },
+  {
+    "name": "麻布麻衣",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-55.png"
+  },
+  {
+    "name": "五桐玲",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-56.png"
+  },
+  {
+    "name": "駒形花火",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-57.png"
+  },
+  {
+    "name": "金澤奇跡",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-58.png"
+  },
+  {
+    "name": "調布のりこ",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-59.png"
+  },
+  {
+    "name": "春宮ゆくり",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-60.png"
+  },
+  {
+    "name": "此花輝夜",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-61.png"
+  },
+  {
+    "name": "山田真緑",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-62.png"
+  },
+  {
+    "name": "佐々木翔音",
+    "group": "ikizurai",
+    "asset": "assets/icons/ikizurai-63.png"
+  },
+  {
+    "name": "鹿角聖良",
+    "group": "aqours",
+    "asset": "assets/icons/saint-snow-sarah.png"
+  },
+  {
+    "name": "鹿角理亞",
+    "group": "aqours",
+    "asset": "assets/icons/saint-snow-leah.png"
+  }
+]
